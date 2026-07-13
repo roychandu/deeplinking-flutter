@@ -8,6 +8,10 @@ class DeepLinking {
   static String? _baseUrl;
   static String? _appId;
 
+  static const MethodChannel _sdkChannel = MethodChannel('deeplinking_sdk_channel');
+  static bool _sdkChannelInitialized = false;
+  static void Function(AttributionResult)? _attributionListener;
+
   /// Configure the SDK with your DeepLinking base URL and App ID
   static void configure({required String baseUrl, required String appId}) {
     // Normalize baseUrl to remove trailing slash
@@ -15,6 +19,41 @@ class DeepLinking {
         ? baseUrl.substring(0, baseUrl.length - 1)
         : baseUrl;
     _appId = appId;
+
+    if (!_sdkChannelInitialized) {
+      _sdkChannelInitialized = true;
+      _sdkChannel.setMethodCallHandler(_handleSdkMethodCall);
+    }
+  }
+
+  /// Register a callback to be notified whenever clipboard install attribution succeeds.
+  static void onInstallAttribution(void Function(AttributionResult) callback) {
+    _attributionListener = callback;
+  }
+
+  static void Function(Map<String, String>)? _onDeepLinkOpenListener;
+
+  /// Register a callback to be notified when a deep link intent is received.
+  static void onDeepLinkOpen(void Function(Map<String, String>) callback) {
+    _onDeepLinkOpenListener = callback;
+  }
+
+  static Future<dynamic> _handleSdkMethodCall(MethodCall call) async {
+    if (call.method == 'onClipboardData') {
+      final map = call.arguments as Map?;
+      final text = map?['text']?.toString();
+      if (text != null && text.isNotEmpty) {
+        final result = await trackInstall(clipboardText: text);
+        if (result != null && result.success) {
+          _attributionListener?.call(result);
+        }
+      }
+    } else if (call.method == 'openDeepLink') {
+      final map = Map<String, dynamic>.from(call.arguments as Map);
+      final params = map.map((key, value) => MapEntry(key, value.toString()));
+      _onDeepLinkOpenListener?.call(params);
+    }
+    return null;
   }
 
   /// Automatically reads the clipboard to check for direct attribution click ID (CID).
@@ -27,6 +66,7 @@ class DeepLinking {
   /// [appVersion] - The current app version.
   /// [customIp] - An optional override for the client IP (useful for local development testing).
   static Future<AttributionResult?> trackInstall({
+    String? clipboardText,
     String? linkId,
     String? installerFcmToken,
     String? installerUserId,
@@ -44,23 +84,28 @@ class DeepLinking {
     String? parsedReferralCode;
     String? parsedShareId;
     String? parsedPermission;
+    final Map<String, dynamic> localParams = {};
 
     // 1. Try to read from Clipboard for Direct Attribution
     try {
-      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-      if (clipboardData != null && clipboardData.text != null) {
-        final text = clipboardData.text!.trim();
+      final String? text = clipboardText?.trim() ?? 
+          (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim();
+      print('[SDKDebug] Resolved clipboard text: "$text"');
+      if (text != null && text.isNotEmpty) {
 
         // ── A. Encoded token format: contains lt_cid_ and __lid_ ──
         if (text.contains('lt_cid_') && text.contains('__lid_')) {
+          print('[SDKDebug] Clipboard matches encoded format');
           final cidMatch = RegExp(r'lt_cid_([a-zA-Z0-9_-]+)').firstMatch(text);
           if (cidMatch != null) {
             clipboardCid = cidMatch.group(1);
+            print('[SDKDebug] Extracted CID: $clipboardCid');
           }
 
           final lidMatch = RegExp(r'__lid_([a-zA-Z0-9_-]+)').firstMatch(text);
           if (lidMatch != null) {
             parsedLinkId = lidMatch.group(1);
+            print('[SDKDebug] Extracted LinkID: $parsedLinkId');
           }
 
           final refMatch = RegExp(r'__ref_([a-zA-Z0-9_-]+)').firstMatch(text);
@@ -90,6 +135,7 @@ class DeepLinking {
         }
         // ── B. Plain URL format: contains tracking path "/api/t/" ──
         else if (text.contains('/api/t/')) {
+          print('[SDKDebug] Clipboard matches plain URL format (/api/t/)');
           // Parse Link ID: find segment after /api/t/
           final trackingPathIndex = text.indexOf('/api/t/');
           if (trackingPathIndex != -1) {
@@ -98,6 +144,7 @@ class DeepLinking {
             parsedLinkId = endOfLinkId != -1
                 ? text.substring(startOfLinkId, endOfLinkId)
                 : text.substring(startOfLinkId);
+            print('[SDKDebug] Extracted LinkID: $parsedLinkId');
           }
 
           // Parse query parameters
@@ -108,16 +155,19 @@ class DeepLinking {
             } else if (uri.queryParameters.containsKey('referralCode')) {
               parsedReferralCode = uri.queryParameters['referralCode'];
             }
+            print('[SDKDebug] Extracted referralCode: $parsedReferralCode');
 
             if (uri.queryParameters.containsKey('shareId')) {
               parsedShareId = uri.queryParameters['shareId'];
             } else if (uri.queryParameters.containsKey('share_id')) {
               parsedShareId = uri.queryParameters['share_id'];
             }
+            print('[SDKDebug] Extracted shareId: $parsedShareId');
 
             if (uri.queryParameters.containsKey('permission')) {
               parsedPermission = uri.queryParameters['permission'];
             }
+            print('[SDKDebug] Extracted permission: $parsedPermission');
 
             if (uri.queryParameters.containsKey('allowedScreens')) {
               allowedScreens = uri.queryParameters['allowedScreens']!
@@ -126,6 +176,17 @@ class DeepLinking {
                   .where((s) => s.isNotEmpty)
                   .toList();
             }
+            print('[SDKDebug] Extracted allowedScreens: $allowedScreens');
+
+            if (uri.queryParameters.containsKey('screen')) {
+              localParams['screen'] = uri.queryParameters['screen'];
+            }
+            if (uri.queryParameters.containsKey('productId')) {
+              localParams['productId'] = uri.queryParameters['productId'];
+            } else if (uri.queryParameters.containsKey('product_id')) {
+              localParams['productId'] = uri.queryParameters['product_id'];
+            }
+            print('[SDKDebug] Extracted localParams: $localParams');
           } catch (_) {}
         }
       }
@@ -180,11 +241,35 @@ class DeepLinking {
 
       if (response.statusCode == 200) {
         final jsonResponse = json.decode(response.body);
-        return AttributionResult.fromJson(jsonResponse);
+        final result = AttributionResult.fromJson(jsonResponse);
+        if (localParams.isNotEmpty) {
+          result.rawParams.addAll(localParams);
+        }
+        return result;
       } else {
+        if (localParams.isNotEmpty) {
+          return AttributionResult(
+            success: true,
+            isInstall: true,
+            allowedScreens: allowedScreens ?? [],
+            permission: parsedPermission,
+            referralCode: parsedReferralCode,
+            rawParams: localParams,
+          );
+        }
         return null;
       }
     } catch (e) {
+      if (localParams.isNotEmpty) {
+        return AttributionResult(
+          success: true,
+          isInstall: true,
+          allowedScreens: allowedScreens ?? [],
+          permission: parsedPermission,
+          referralCode: parsedReferralCode,
+          rawParams: localParams,
+        );
+      }
       return null;
     }
   }
