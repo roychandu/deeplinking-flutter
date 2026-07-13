@@ -42,6 +42,8 @@ class DeepLinking {
     String? parsedLinkId;
     List<String>? allowedScreens;
     String? parsedReferralCode;
+    String? parsedShareId;
+    String? parsedPermission;
 
     // 1. Try to read from Clipboard for Direct Attribution
     try {
@@ -49,23 +51,31 @@ class DeepLinking {
       if (clipboardData != null && clipboardData.text != null) {
         final text = clipboardData.text!.trim();
 
-        // Parse Click ID: lt_cid_XXX
-        if (text.contains('lt_cid_')) {
+        // ── A. Encoded token format: contains lt_cid_ and __lid_ ──
+        if (text.contains('lt_cid_') && text.contains('__lid_')) {
           final cidMatch = RegExp(r'lt_cid_([a-zA-Z0-9_-]+)').firstMatch(text);
           if (cidMatch != null) {
-            clipboardCid = cidMatch.group(0);
+            clipboardCid = cidMatch.group(1);
           }
 
-          // Parse Link ID: _lid_XXX
-          final lidMatch = RegExp(r'_lid_([a-zA-Z0-9_-]+)').firstMatch(text);
+          final lidMatch = RegExp(r'__lid_([a-zA-Z0-9_-]+)').firstMatch(text);
           if (lidMatch != null) {
             parsedLinkId = lidMatch.group(1);
           }
 
-          // Parse Allowed Screens: _scr_screen1,screen2
-          final scrMatch = RegExp(r'_scr_([a-zA-Z0-9_,-]+)').firstMatch(text);
-          if (scrMatch != null && scrMatch.group(1) != null) {
-            allowedScreens = scrMatch
+          final refMatch = RegExp(r'__ref_([a-zA-Z0-9_-]+)').firstMatch(text);
+          if (refMatch != null) {
+            parsedReferralCode = refMatch.group(1);
+          }
+
+          final shMatch = RegExp(r'__sh_([a-zA-Z0-9_-]+)').firstMatch(text);
+          if (shMatch != null) {
+            parsedShareId = shMatch.group(1);
+          }
+
+          final alsMatch = RegExp(r'__als_([a-zA-Z0-9_,-]+)').firstMatch(text);
+          if (alsMatch != null && alsMatch.group(1) != null) {
+            allowedScreens = alsMatch
                 .group(1)!
                 .split(',')
                 .map((s) => s.trim())
@@ -73,11 +83,50 @@ class DeepLinking {
                 .toList();
           }
 
-          // Parse Referral Code: _ref_XXX
-          final refMatch = RegExp(r'_ref_([a-zA-Z0-9_-]+)').firstMatch(text);
-          if (refMatch != null) {
-            parsedReferralCode = refMatch.group(1);
+          final permMatch = RegExp(r'__perm_([a-zA-Z0-9_-]+)').firstMatch(text);
+          if (permMatch != null) {
+            parsedPermission = permMatch.group(1);
           }
+        }
+        // ── B. Plain URL format: contains tracking path "/api/t/" ──
+        else if (text.contains('/api/t/')) {
+          // Parse Link ID: find segment after /api/t/
+          final trackingPathIndex = text.indexOf('/api/t/');
+          if (trackingPathIndex != -1) {
+            final startOfLinkId = trackingPathIndex + '/api/t/'.length;
+            final endOfLinkId = text.indexOf(RegExp(r'[\?/\s]'), startOfLinkId);
+            parsedLinkId = endOfLinkId != -1
+                ? text.substring(startOfLinkId, endOfLinkId)
+                : text.substring(startOfLinkId);
+          }
+
+          // Parse query parameters
+          try {
+            final uri = Uri.parse(text);
+            if (uri.queryParameters.containsKey('ref')) {
+              parsedReferralCode = uri.queryParameters['ref'];
+            } else if (uri.queryParameters.containsKey('referralCode')) {
+              parsedReferralCode = uri.queryParameters['referralCode'];
+            }
+
+            if (uri.queryParameters.containsKey('shareId')) {
+              parsedShareId = uri.queryParameters['shareId'];
+            } else if (uri.queryParameters.containsKey('share_id')) {
+              parsedShareId = uri.queryParameters['share_id'];
+            }
+
+            if (uri.queryParameters.containsKey('permission')) {
+              parsedPermission = uri.queryParameters['permission'];
+            }
+
+            if (uri.queryParameters.containsKey('allowedScreens')) {
+              allowedScreens = uri.queryParameters['allowedScreens']!
+                  .split(',')
+                  .map((s) => s.trim())
+                  .where((s) => s.isNotEmpty)
+                  .toList();
+            }
+          } catch (_) {}
         }
       }
     } catch (e) {
@@ -100,17 +149,24 @@ class DeepLinking {
       if (customIp != null) 'ip': customIp,
     };
 
+    // Use parsed values from clipboard if available, fallback to function arguments
+    final finalLinkId = parsedLinkId ?? linkId ?? '';
+    requestBody['linkId'] = finalLinkId;
+
     if (clipboardCid != null) {
-      // Direct Attribution Mode
       requestBody['cid'] = clipboardCid;
-      requestBody['linkId'] = parsedLinkId ?? linkId ?? '';
-      if (allowedScreens != null)
-        requestBody['allowedScreens'] = allowedScreens;
-      if (parsedReferralCode != null)
-        requestBody['referralCode'] = parsedReferralCode;
-    } else {
-      // Fingerprint / Manual Fallback Mode
-      requestBody['linkId'] = linkId ?? '';
+    }
+    if (parsedReferralCode != null) {
+      requestBody['referralCode'] = parsedReferralCode;
+    }
+    if (parsedShareId != null) {
+      requestBody['shareId'] = parsedShareId;
+    }
+    if (parsedPermission != null) {
+      requestBody['permission'] = parsedPermission;
+    }
+    if (allowedScreens != null && allowedScreens.isNotEmpty) {
+      requestBody['allowedScreens'] = allowedScreens.join(',');
     }
 
     // 4. Send network call to backend
