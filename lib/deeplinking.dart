@@ -1,4 +1,4 @@
 library deeplinking;
 
-export 'src/link_traker.dart';
+export 'src/deeplinking_core.dart';
 export 'src/models.dart';

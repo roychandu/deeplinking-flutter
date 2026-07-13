@@ -30,8 +30,8 @@ import 'package:deeplinking/deeplinking.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Configure with your self-hosted Link Traker Vercel server URL
-  LinkTraker.configure(
+  // Configure with your self-hosted DeepLinking Vercel server URL
+  DeepLinking.configure(
     baseUrl: 'https://your-app.vercel.app',
     appId: 'your_unique_app_id',
   );
@@ -49,7 +49,7 @@ When the app launches for the first time, check if the install originated from a
 
 ```dart
 void checkAttribution() async {
-  final result = await LinkTraker.trackInstall(
+  final result = await DeepLinking.trackInstall(
     linkId: 'FALLBACK_LINK_ID', // Used for fingerprint matching
     installerFcmToken: 'USER_FCM_TOKEN', // Send to enable push notifications
     installerUserId: 'USER_123', // User ID inside your system
@@ -77,7 +77,7 @@ When a referred user completes onboarding or registers, call this method to trig
 ```dart
 void redeemUserReferral(String referralCode) async {
   try {
-    final response = await LinkTraker.redeemReferral(
+    final response = await DeepLinking.redeemReferral(
       referralCode: referralCode,
       newUserId: 'NEW_USER_456', // The new user who just signed up
       rewardDays: 15, // Dynamic reward overwrite (optional)
@@ -98,7 +98,7 @@ Log sharing activity immediately before opening the OS Share Sheet. This contrib
 
 ```dart
 void onShareProductClicked() async {
-  await LinkTraker.trackShare(
+  await DeepLinking.trackShare(
     linkId: 'TRACKING_LINK_ID',
     referralCode: 'SENDER_REF_CODE',
     screen: 'product_details_screen',

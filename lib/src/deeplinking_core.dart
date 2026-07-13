@@ -4,11 +4,11 @@ import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'device_helper.dart';
 
-class LinkTraker {
+class DeepLinking {
   static String? _baseUrl;
   static String? _appId;
 
-  /// Configure the SDK with your Link Traker base URL and App ID
+  /// Configure the SDK with your DeepLinking base URL and App ID
   static void configure({required String baseUrl, required String appId}) {
     // Normalize baseUrl to remove trailing slash
     _baseUrl = baseUrl.endsWith('/')
@@ -35,7 +35,7 @@ class LinkTraker {
   }) async {
     if (_baseUrl == null || _appId == null) {
       throw StateError(
-          'LinkTraker is not configured. Please call LinkTraker.configure() first.');
+          'DeepLinking is not configured. Please call DeepLinking.configure() first.');
     }
 
     String? clipboardCid;
@@ -53,7 +53,6 @@ class LinkTraker {
         if (text.contains('lt_cid_')) {
           final cidMatch = RegExp(r'lt_cid_([a-zA-Z0-9_-]+)').firstMatch(text);
           if (cidMatch != null) {
-            // Reconstruct the full CID including prefix if it matched
             clipboardCid = cidMatch.group(0);
           }
 
@@ -70,7 +69,7 @@ class LinkTraker {
                 .group(1)!
                 .split(',')
                 .map((s) => s.trim())
-                .filter((s) => s.isNotEmpty)
+                .where((s) => s.isNotEmpty)
                 .toList();
           }
 
@@ -147,7 +146,7 @@ class LinkTraker {
   }) async {
     if (_baseUrl == null) {
       throw StateError(
-          'LinkTraker is not configured. Please call LinkTraker.configure() first.');
+          'DeepLinking is not configured. Please call DeepLinking.configure() first.');
     }
 
     final url = Uri.parse('$_baseUrl/api/redeem-referral');
@@ -198,7 +197,7 @@ class LinkTraker {
   }) async {
     if (_baseUrl == null || _appId == null) {
       throw StateError(
-          'LinkTraker is not configured. Please call LinkTraker.configure() first.');
+          'DeepLinking is not configured. Please call DeepLinking.configure() first.');
     }
 
     final url = Uri.parse('$_baseUrl/api/track-share');
@@ -230,9 +229,4 @@ class LinkTraker {
       throw Exception(jsonResponse['error'] ?? 'Failed to track share event.');
     }
   }
-}
-
-/// Helper extension to easily filter lists.
-extension _ListFilter<E> on Iterable<E> {
-  Iterable<E> filter(bool Function(E element) test) => where(test);
 }
