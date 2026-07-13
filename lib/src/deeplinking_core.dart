@@ -229,4 +229,198 @@ class DeepLinking {
       throw Exception(jsonResponse['error'] ?? 'Failed to track share event.');
     }
   }
+
+  /// Registers a share event with the tracking backend.
+  static Future<Map<String, dynamic>> registerShare({
+    required String linkId,
+    required String screen,
+    String? senderReferralCode,
+    String? senderFcmToken,
+    String? senderUserId,
+    String? productId,
+    String? permission,
+    List<String>? allowedScreens,
+  }) async {
+    if (_baseUrl == null || _appId == null) {
+      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+    }
+
+    final url = Uri.parse('$_baseUrl/api/shares/register');
+    final Map<String, dynamic> body = {
+      'linkId': linkId,
+      'appId': _appId,
+      'screen': screen,
+      if (senderReferralCode != null) 'senderReferralCode': senderReferralCode,
+      if (senderFcmToken != null) 'senderFcmToken': senderFcmToken,
+      if (senderUserId != null) 'senderUserId': senderUserId,
+      if (productId != null) 'productId': productId,
+      if (permission != null) 'permission': permission,
+      if (allowedScreens != null && allowedScreens.isNotEmpty)
+        'allowedScreens': allowedScreens.join(','),
+    };
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(body),
+    );
+
+    final jsonResponse = json.decode(response.body);
+    if (response.statusCode == 200) {
+      return jsonResponse;
+    } else {
+      throw Exception(jsonResponse['error'] ?? 'Failed to register share.');
+    }
+  }
+
+  /// Registers the inviter's referral code and FCM token.
+  static Future<Map<String, dynamic>> registerSender({
+    required String referralCode,
+    required String referralFcmToken,
+    required String referralUserId,
+    required String masterLink,
+  }) async {
+    if (_baseUrl == null || _appId == null) {
+      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+    }
+
+    final url = Uri.parse('$_baseUrl/api/register-sender');
+    final Map<String, dynamic> body = {
+      'referralCode': referralCode,
+      'referralFcmToken': referralFcmToken,
+      'referralUserId': referralUserId,
+      'masterLink': masterLink,
+      'appId': _appId,
+    };
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(body),
+    );
+
+    final jsonResponse = json.decode(response.body);
+    if (response.statusCode == 200) {
+      return jsonResponse;
+    } else {
+      throw Exception(jsonResponse['error'] ?? 'Failed to register sender.');
+    }
+  }
+
+  /// Fetches the referral history for a specific user.
+  static Future<List<Map<String, dynamic>>> fetchReferralHistory(String userId) async {
+    if (_baseUrl == null) {
+      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+    }
+
+    final url = Uri.parse('$_baseUrl/api/referral-history?userId=$userId');
+    final response = await http.get(
+      url,
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    final jsonResponse = json.decode(response.body);
+    if (response.statusCode == 200 && jsonResponse['success'] == true) {
+      if (jsonResponse['history'] is List) {
+        return List<Map<String, dynamic>>.from(jsonResponse['history']);
+      }
+    }
+    return [];
+  }
+
+  /// Tracks a premium subscription/upgrade action.
+  static Future<void> trackPremium({
+    required String referralCode,
+    required String appId,
+  }) async {
+    if (_baseUrl == null) {
+      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+    }
+
+    final url = Uri.parse('$_baseUrl/api/track-premium');
+    await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'ref': referralCode,
+        'app_id': appId,
+      }),
+    );
+  }
+
+  /// Syncs the user's FCM push notification token.
+  static Future<void> syncFcmToken({
+    required String linkId,
+    required String fcmToken,
+    String? referralCode,
+    String? userId,
+    String? shareId,
+  }) async {
+    if (_baseUrl == null || _appId == null) {
+      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+    }
+
+    final url = Uri.parse('$_baseUrl/api/sync-fcm');
+    final Map<String, dynamic> body = {
+      'linkId': linkId,
+      'appId': _appId,
+      'fcmToken': fcmToken,
+      if (referralCode != null) 'referralCode': referralCode,
+      if (userId != null) 'userId': userId,
+      if (shareId != null) 'shareId': shareId,
+    };
+
+    await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(body),
+    );
+  }
+
+  /// Tracks when a deep link is opened directly by the app.
+  static Future<void> trackDeepLinkOpen({
+    required String linkId,
+    required String screen,
+    required String targetId,
+    required String appState,
+    String? referralCode,
+    String? shareId,
+    String? openedByFcmToken,
+    String? openedByUserId,
+    String? platform,
+    String? appVersion,
+    String? osVersion,
+    Map<String, dynamic>? params,
+  }) async {
+    if (_baseUrl == null || _appId == null) {
+      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+    }
+
+    final url = Uri.parse('$_baseUrl/api/track-deep-link-open');
+    final Map<String, dynamic> body = {
+      'eventId': 'dl_open_${DateTime.now().millisecondsSinceEpoch}',
+      'linkId': linkId,
+      'appId': _appId,
+      'app_id': _appId,
+      'eventType': 'direct_open',
+      'appState': appState,
+      'source': 'app_link',
+      'platform': platform ?? 'android',
+      'screen': screen,
+      'targetId': targetId,
+      if (referralCode != null) 'referralCode': referralCode,
+      if (shareId != null) 'shareId': shareId,
+      if (openedByFcmToken != null) 'openedByFcmToken': openedByFcmToken,
+      if (openedByUserId != null) 'openedByUserId': openedByUserId,
+      if (osVersion != null) 'osVersion': osVersion,
+      if (appVersion != null) 'appVersion': appVersion,
+      if (params != null) 'params': params,
+    };
+
+    await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(body),
+    );
+  }
 }
