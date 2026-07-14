@@ -42,13 +42,21 @@ class DeepLinking {
     if (call.method == 'onClipboardData') {
       final map = call.arguments as Map?;
       final text = map?['text']?.toString();
+      print('[SDK] onClipboardData received. text: "$text"');
       if (text != null && text.isNotEmpty) {
+        print('[SDK] Calling trackInstall with clipboardText...');
         final result = await trackInstall(clipboardText: text);
+        print('[SDK] trackInstall returned: success=${result?.success}, rawParams=${result?.rawParams}');
         if (result != null && result.success) {
+          print('[SDK] Firing _attributionListener...');
           _attributionListener?.call(result);
+          print('[SDK] _attributionListener fired. Listener was ${_attributionListener == null ? "NULL" : "set"}');
+        } else {
+          print('[SDK] result is null or success=false. Listener NOT fired.');
         }
       }
     } else if (call.method == 'openDeepLink') {
+      print('[SDK] openDeepLink received from native: ${call.arguments}');
       final map = Map<String, dynamic>.from(call.arguments as Map);
       final params = map.map((key, value) => MapEntry(key, value.toString()));
       _onDeepLinkOpenListener?.call(params);
@@ -96,29 +104,31 @@ class DeepLinking {
         // ── A. Encoded token format: contains lt_cid_ and __lid_ ──
         if (text.contains('lt_cid_') && text.contains('__lid_')) {
           print('[SDKDebug] Clipboard matches encoded format');
-          final cidMatch = RegExp(r'lt_cid_([a-zA-Z0-9_-]+)').firstMatch(text);
+          final cidMatch = RegExp(r'lt_cid_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
           if (cidMatch != null) {
             clipboardCid = cidMatch.group(1);
             print('[SDKDebug] Extracted CID: $clipboardCid');
           }
 
-          final lidMatch = RegExp(r'__lid_([a-zA-Z0-9_-]+)').firstMatch(text);
+          final lidMatch = RegExp(r'__lid_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
           if (lidMatch != null) {
             parsedLinkId = lidMatch.group(1);
             print('[SDKDebug] Extracted LinkID: $parsedLinkId');
           }
 
-          final refMatch = RegExp(r'__ref_([a-zA-Z0-9_-]+)').firstMatch(text);
+          final refMatch = RegExp(r'__ref_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
           if (refMatch != null) {
             parsedReferralCode = refMatch.group(1);
+            print('[SDKDebug] Extracted referralCode: $parsedReferralCode');
           }
 
-          final shMatch = RegExp(r'__sh_([a-zA-Z0-9_-]+)').firstMatch(text);
+          final shMatch = RegExp(r'__sh_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
           if (shMatch != null) {
             parsedShareId = shMatch.group(1);
+            print('[SDKDebug] Extracted shareId: $parsedShareId');
           }
 
-          final alsMatch = RegExp(r'__als_([a-zA-Z0-9_,-]+)').firstMatch(text);
+          final alsMatch = RegExp(r'__als_([a-zA-Z0-9_,-]+?)(?:__|$)').firstMatch(text);
           if (alsMatch != null && alsMatch.group(1) != null) {
             allowedScreens = alsMatch
                 .group(1)!
@@ -126,11 +136,13 @@ class DeepLinking {
                 .map((s) => s.trim())
                 .where((s) => s.isNotEmpty)
                 .toList();
+            print('[SDKDebug] Extracted allowedScreens: $allowedScreens');
           }
 
-          final permMatch = RegExp(r'__perm_([a-zA-Z0-9_-]+)').firstMatch(text);
+          final permMatch = RegExp(r'__perm_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
           if (permMatch != null) {
             parsedPermission = permMatch.group(1);
+            print('[SDKDebug] Extracted permission: $parsedPermission');
           }
         }
         // ── B. Plain URL format: contains tracking path "/api/t/" ──
@@ -148,8 +160,14 @@ class DeepLinking {
           }
 
           // Parse query parameters
+          // IMPORTANT: clipboard text may be multiline (e.g. share messages like
+          // "Nike Air Force 1\n$109\n\nView on Store Room: https://...").
+          // Uri.parse on the full text silently returns an empty URI.
+          // We must extract just the URL first.
           try {
-            final uri = Uri.parse(text);
+            final urlMatch = RegExp(r'https?://\S+').firstMatch(text);
+            final rawUrl = urlMatch?.group(0) ?? text;
+            final uri = Uri.parse(rawUrl);
             if (uri.queryParameters.containsKey('ref')) {
               parsedReferralCode = uri.queryParameters['ref'];
             } else if (uri.queryParameters.containsKey('referralCode')) {

@@ -59,8 +59,20 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
     private fun checkClipboardAndNotify() {
         val text = getClipboardText()
         if (text.isNotEmpty()) {
+            val prefs = context?.getSharedPreferences("DeeplinkingSDKPrefs", Context.MODE_PRIVATE)
+            val lastText = prefs?.getString("last_clipboard_text", "")
+            if (text == lastText) {
+                Log.d("DeeplinkingPlugin", "Clipboard data unchanged, skipping notification.")
+                return
+            }
+            prefs?.edit()?.putString("last_clipboard_text", text)?.apply()
+
             Log.d("DeeplinkingPlugin", "Clipboard data detected natively: $text")
-            channel.invokeMethod("onClipboardData", mapOf("text" to text))
+            // Delay slightly to ensure the Flutter method handler is registered
+            // before we invoke. This prevents the event being dropped on cold start.
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                channel.invokeMethod("onClipboardData", mapOf("text" to text))
+            }, 500L)
         }
     }
 
@@ -73,6 +85,9 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
         // Handle cold start intent
         handleIntent(activity?.intent, "cold")
         setupFocusListener()
+        
+        // Check clipboard on cold start
+        checkClipboardAndNotify()
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
