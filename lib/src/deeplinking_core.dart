@@ -8,7 +8,9 @@ class DeepLinking {
   static String? _baseUrl;
   static String? _appId;
 
-  static const MethodChannel _sdkChannel = MethodChannel('deeplinking_sdk_channel');
+  static const MethodChannel _sdkChannel = MethodChannel(
+    'deeplinking_sdk_channel',
+  );
   static bool _sdkChannelInitialized = false;
   static void Function(AttributionResult)? _attributionListener;
 
@@ -46,11 +48,15 @@ class DeepLinking {
       if (text != null && text.isNotEmpty) {
         print('[SDK] Calling trackInstall with clipboardText...');
         final result = await trackInstall(clipboardText: text);
-        print('[SDK] trackInstall returned: success=${result?.success}, rawParams=${result?.rawParams}');
+        print(
+          '[SDK] trackInstall returned: success=${result?.success}, rawParams=${result?.rawParams}',
+        );
         if (result != null && result.success) {
           print('[SDK] Firing _attributionListener...');
           _attributionListener?.call(result);
-          print('[SDK] _attributionListener fired. Listener was ${_attributionListener == null ? "NULL" : "set"}');
+          print(
+            '[SDK] _attributionListener fired. Listener was ${_attributionListener == null ? "NULL" : "set"}',
+          );
         } else {
           print('[SDK] result is null or success=false. Listener NOT fired.');
         }
@@ -83,7 +89,8 @@ class DeepLinking {
   }) async {
     if (_baseUrl == null || _appId == null) {
       throw StateError(
-          'DeepLinking is not configured. Please call DeepLinking.configure() first.');
+        'DeepLinking is not configured. Please call DeepLinking.configure() first.',
+      );
     }
 
     String? clipboardCid;
@@ -96,39 +103,49 @@ class DeepLinking {
 
     // 1. Try to read from Clipboard for Direct Attribution
     try {
-      final String? text = clipboardText?.trim() ?? 
+      final String? text =
+          clipboardText?.trim() ??
           (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim();
       print('[SDKDebug] Resolved clipboard text: "$text"');
       if (text != null && text.isNotEmpty) {
-
         // ── A. Encoded token format: contains lt_cid_ and __lid_ ──
         if (text.contains('lt_cid_') && text.contains('__lid_')) {
           print('[SDKDebug] Clipboard matches encoded format');
-          final cidMatch = RegExp(r'lt_cid_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
+          final cidMatch = RegExp(
+            r'lt_cid_([a-zA-Z0-9_-]+?)(?:__|$)',
+          ).firstMatch(text);
           if (cidMatch != null) {
             clipboardCid = cidMatch.group(1);
             print('[SDKDebug] Extracted CID: $clipboardCid');
           }
 
-          final lidMatch = RegExp(r'__lid_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
+          final lidMatch = RegExp(
+            r'__lid_([a-zA-Z0-9_-]+?)(?:__|$)',
+          ).firstMatch(text);
           if (lidMatch != null) {
             parsedLinkId = lidMatch.group(1);
             print('[SDKDebug] Extracted LinkID: $parsedLinkId');
           }
 
-          final refMatch = RegExp(r'__ref_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
+          final refMatch = RegExp(
+            r'__ref_([a-zA-Z0-9_-]+?)(?:__|$)',
+          ).firstMatch(text);
           if (refMatch != null) {
             parsedReferralCode = refMatch.group(1);
             print('[SDKDebug] Extracted referralCode: $parsedReferralCode');
           }
 
-          final shMatch = RegExp(r'__sh_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
+          final shMatch = RegExp(
+            r'__sh_([a-zA-Z0-9_-]+?)(?:__|$)',
+          ).firstMatch(text);
           if (shMatch != null) {
             parsedShareId = shMatch.group(1);
             print('[SDKDebug] Extracted shareId: $parsedShareId');
           }
 
-          final alsMatch = RegExp(r'__als_([a-zA-Z0-9_,-]+?)(?:__|$)').firstMatch(text);
+          final alsMatch = RegExp(
+            r'__als_([a-zA-Z0-9_,-]+?)(?:__|$)',
+          ).firstMatch(text);
           if (alsMatch != null && alsMatch.group(1) != null) {
             allowedScreens = alsMatch
                 .group(1)!
@@ -139,7 +156,9 @@ class DeepLinking {
             print('[SDKDebug] Extracted allowedScreens: $allowedScreens');
           }
 
-          final permMatch = RegExp(r'__perm_([a-zA-Z0-9_-]+?)(?:__|$)').firstMatch(text);
+          final permMatch = RegExp(
+            r'__perm_([a-zA-Z0-9_-]+?)(?:__|$)',
+          ).firstMatch(text);
           if (permMatch != null) {
             parsedPermission = permMatch.group(1);
             print('[SDKDebug] Extracted permission: $parsedPermission');
@@ -305,7 +324,8 @@ class DeepLinking {
   }) async {
     if (_baseUrl == null) {
       throw StateError(
-          'DeepLinking is not configured. Please call DeepLinking.configure() first.');
+        'DeepLinking is not configured. Please call DeepLinking.configure() first.',
+      );
     }
 
     final url = Uri.parse('$_baseUrl/api/redeem-referral');
@@ -324,7 +344,8 @@ class DeepLinking {
       return jsonResponse;
     } else {
       throw Exception(
-          jsonResponse['error'] ?? 'Failed to redeem referral code.');
+        jsonResponse['error'] ?? 'Failed to redeem referral code.',
+      );
     }
   }
 
@@ -356,7 +377,8 @@ class DeepLinking {
   }) async {
     if (_baseUrl == null || _appId == null) {
       throw StateError(
-          'DeepLinking is not configured. Please call DeepLinking.configure() first.');
+        'DeepLinking is not configured. Please call DeepLinking.configure() first.',
+      );
     }
 
     final url = Uri.parse('$_baseUrl/api/track-share');
@@ -401,7 +423,9 @@ class DeepLinking {
     List<String>? allowedScreens,
   }) async {
     if (_baseUrl == null || _appId == null) {
-      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+      throw StateError(
+        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+      );
     }
 
     final url = Uri.parse('$_baseUrl/api/shares/register');
@@ -440,7 +464,9 @@ class DeepLinking {
     required String masterLink,
   }) async {
     if (_baseUrl == null || _appId == null) {
-      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+      throw StateError(
+        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+      );
     }
 
     final url = Uri.parse('$_baseUrl/api/register-sender');
@@ -467,9 +493,13 @@ class DeepLinking {
   }
 
   /// Fetches the referral history for a specific user.
-  static Future<List<Map<String, dynamic>>> fetchReferralHistory(String userId) async {
+  static Future<List<Map<String, dynamic>>> fetchReferralHistory(
+    String userId,
+  ) async {
     if (_baseUrl == null) {
-      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+      throw StateError(
+        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+      );
     }
 
     final url = Uri.parse('$_baseUrl/api/referral-history?userId=$userId');
@@ -493,17 +523,16 @@ class DeepLinking {
     required String appId,
   }) async {
     if (_baseUrl == null) {
-      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+      throw StateError(
+        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+      );
     }
 
     final url = Uri.parse('$_baseUrl/api/track-premium');
     await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
-      body: json.encode({
-        'ref': referralCode,
-        'app_id': appId,
-      }),
+      body: json.encode({'ref': referralCode, 'app_id': appId}),
     );
   }
 
@@ -514,9 +543,12 @@ class DeepLinking {
     String? referralCode,
     String? userId,
     String? shareId,
+    String? clickId,
   }) async {
     if (_baseUrl == null || _appId == null) {
-      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+      throw StateError(
+        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+      );
     }
 
     final url = Uri.parse('$_baseUrl/api/sync-fcm');
@@ -527,6 +559,7 @@ class DeepLinking {
       if (referralCode != null) 'referralCode': referralCode,
       if (userId != null) 'userId': userId,
       if (shareId != null) 'shareId': shareId,
+      if (clickId != null) 'clickId': clickId,
     };
 
     await http.post(
@@ -552,7 +585,9 @@ class DeepLinking {
     Map<String, dynamic>? params,
   }) async {
     if (_baseUrl == null || _appId == null) {
-      throw StateError('DeepLinking is not configured. Call DeepLinking.configure() first.');
+      throw StateError(
+        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+      );
     }
 
     final url = Uri.parse('$_baseUrl/api/track-deep-link-open');
