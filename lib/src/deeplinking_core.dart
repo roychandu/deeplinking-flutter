@@ -7,6 +7,7 @@ import 'device_helper.dart';
 class DeepLinking {
   static String? _baseUrl;
   static String? _appId;
+  static String? _sdkKey;
 
   static const MethodChannel _sdkChannel = MethodChannel(
     'deeplinking_sdk_channel',
@@ -14,13 +15,21 @@ class DeepLinking {
   static bool _sdkChannelInitialized = false;
   static void Function(AttributionResult)? _attributionListener;
 
-  /// Configure the SDK with your DeepLinking base URL and App ID
-  static void configure({required String baseUrl, required String appId}) {
+  /// Configure the SDK with your DeepLinking base URL, App ID, and SDK Key
+  static void configure({
+    required String baseUrl,
+    required String appId,
+    required String sdkKey,
+  }) {
+    if (sdkKey.trim().isEmpty) {
+      throw ArgumentError('sdkKey cannot be empty.');
+    }
     // Normalize baseUrl to remove trailing slash
     _baseUrl = baseUrl.endsWith('/')
         ? baseUrl.substring(0, baseUrl.length - 1)
         : baseUrl;
     _appId = appId;
+    _sdkKey = sdkKey.trim();
 
     if (!_sdkChannelInitialized) {
       _sdkChannelInitialized = true;
@@ -87,9 +96,9 @@ class DeepLinking {
     String? appVersion,
     String? customIp,
   }) async {
-    if (_baseUrl == null || _appId == null) {
+    if (_baseUrl == null || _appId == null || _sdkKey == null) {
       throw StateError(
-        'DeepLinking is not configured. Please call DeepLinking.configure() first.',
+        'DeepLinking is not configured. Please call DeepLinking.configure() first with a valid SDK Key.',
       );
     }
 
@@ -272,7 +281,7 @@ class DeepLinking {
     try {
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
         body: json.encode(requestBody),
       );
 
@@ -322,16 +331,16 @@ class DeepLinking {
     required String newUserId,
     int? rewardDays,
   }) async {
-    if (_baseUrl == null) {
+    if (_baseUrl == null || _sdkKey == null) {
       throw StateError(
-        'DeepLinking is not configured. Please call DeepLinking.configure() first.',
+        'DeepLinking is not configured. Please call DeepLinking.configure() first with a valid SDK Key.',
       );
     }
 
     final url = Uri.parse('$_baseUrl/api/redeem-referral');
     final response = await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode({
         'referralCode': referralCode,
         'newUserId': newUserId,
@@ -375,9 +384,9 @@ class DeepLinking {
     String? eventId,
     Map<String, dynamic>? params,
   }) async {
-    if (_baseUrl == null || _appId == null) {
+    if (_baseUrl == null || _appId == null || _sdkKey == null) {
       throw StateError(
-        'DeepLinking is not configured. Please call DeepLinking.configure() first.',
+        'DeepLinking is not configured. Please call DeepLinking.configure() first with a valid SDK Key.',
       );
     }
 
@@ -399,7 +408,7 @@ class DeepLinking {
 
     final response = await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
 
@@ -422,9 +431,9 @@ class DeepLinking {
     String? permission,
     List<String>? allowedScreens,
   }) async {
-    if (_baseUrl == null || _appId == null) {
+    if (_baseUrl == null || _appId == null || _sdkKey == null) {
       throw StateError(
-        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+        'DeepLinking is not configured. Call DeepLinking.configure() first with a valid SDK Key.',
       );
     }
 
@@ -444,7 +453,7 @@ class DeepLinking {
 
     final response = await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
 
@@ -463,9 +472,9 @@ class DeepLinking {
     required String referralUserId,
     required String masterLink,
   }) async {
-    if (_baseUrl == null || _appId == null) {
+    if (_baseUrl == null || _appId == null || _sdkKey == null) {
       throw StateError(
-        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+        'DeepLinking is not configured. Call DeepLinking.configure() first with a valid SDK Key.',
       );
     }
 
@@ -480,7 +489,7 @@ class DeepLinking {
 
     final response = await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
 
@@ -496,16 +505,16 @@ class DeepLinking {
   static Future<List<Map<String, dynamic>>> fetchReferralHistory(
     String userId,
   ) async {
-    if (_baseUrl == null) {
+    if (_baseUrl == null || _sdkKey == null) {
       throw StateError(
-        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+        'DeepLinking is not configured. Call DeepLinking.configure() first with a valid SDK Key.',
       );
     }
 
     final url = Uri.parse('$_baseUrl/api/referral-history?userId=$userId');
     final response = await http.get(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
     );
 
     final jsonResponse = json.decode(response.body);
@@ -522,16 +531,16 @@ class DeepLinking {
     required String referralCode,
     required String appId,
   }) async {
-    if (_baseUrl == null) {
+    if (_baseUrl == null || _sdkKey == null) {
       throw StateError(
-        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+        'DeepLinking is not configured. Call DeepLinking.configure() first with a valid SDK Key.',
       );
     }
 
     final url = Uri.parse('$_baseUrl/api/track-premium');
     await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode({'ref': referralCode, 'app_id': appId}),
     );
   }
@@ -545,9 +554,9 @@ class DeepLinking {
     String? shareId,
     String? clickId,
   }) async {
-    if (_baseUrl == null || _appId == null) {
+    if (_baseUrl == null || _appId == null || _sdkKey == null) {
       throw StateError(
-        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+        'DeepLinking is not configured. Call DeepLinking.configure() first with a valid SDK Key.',
       );
     }
 
@@ -564,7 +573,7 @@ class DeepLinking {
 
     await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
   }
@@ -584,9 +593,9 @@ class DeepLinking {
     String? osVersion,
     Map<String, dynamic>? params,
   }) async {
-    if (_baseUrl == null || _appId == null) {
+    if (_baseUrl == null || _appId == null || _sdkKey == null) {
       throw StateError(
-        'DeepLinking is not configured. Call DeepLinking.configure() first.',
+        'DeepLinking is not configured. Call DeepLinking.configure() first with a valid SDK Key.',
       );
     }
 
@@ -613,8 +622,30 @@ class DeepLinking {
 
     await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
+  }
+
+  /// Fetches the active plan associated with the configured SDK Key.
+  /// Resolves the plan tier (e.g., 'free', 'base', 'pro', 'enterprise').
+  static Future<String> getActivePlan() async {
+    if (_baseUrl == null || _sdkKey == null) {
+      throw StateError(
+        'DeepLinking is not configured. Please call DeepLinking.configure() first with a valid SDK Key.',
+      );
+    }
+
+    final url = Uri.parse('$_baseUrl/api/sdk/plan?key=${Uri.encodeComponent(_sdkKey!)}');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        return jsonResponse['plan'] ?? 'base';
+      }
+    } catch (_) {
+      // Fallback on network errors
+    }
+    return 'base';
   }
 }
