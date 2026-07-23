@@ -1,3 +1,16 @@
+/// Thrown when the backend rejects a call because the plan's monthly SDK
+/// request limit has been reached (HTTP 429, code RATE_LIMIT_EXCEEDED).
+class SdkLimitExceededException implements Exception {
+  final String message;
+  final int? used;
+  final int? limit;
+
+  SdkLimitExceededException(this.message, {this.used, this.limit});
+
+  @override
+  String toString() => message;
+}
+
 class AttributionResult {
   final bool success;
   final String? method;

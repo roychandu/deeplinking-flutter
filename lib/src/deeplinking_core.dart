@@ -4,6 +4,24 @@ import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'device_helper.dart';
 
+/// Throws [SdkLimitExceededException] if [response] is a 429 rate-limit
+/// rejection from the backend's plan-based SDK quota enforcement.
+void _throwIfRateLimited(http.Response response) {
+  if (response.statusCode == 429) {
+    Map<String, dynamic> body;
+    try {
+      body = json.decode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      body = const {};
+    }
+    throw SdkLimitExceededException(
+      body['error']?.toString() ?? 'Monthly SDK request limit reached.',
+      used: body['used'] is int ? body['used'] as int : null,
+      limit: body['limit'] is int ? body['limit'] as int : null,
+    );
+  }
+}
+
 class DeepLinking {
   static String? _baseUrl;
   static String? _appId;
@@ -285,6 +303,8 @@ class DeepLinking {
         body: json.encode(requestBody),
       );
 
+      _throwIfRateLimited(response);
+
       if (response.statusCode == 200) {
         final jsonResponse = json.decode(response.body);
         final result = AttributionResult.fromJson(jsonResponse);
@@ -305,6 +325,12 @@ class DeepLinking {
         }
         return null;
       }
+    } on SdkLimitExceededException {
+      // The backend explicitly rejected this request because the plan's
+      // monthly SDK quota is exhausted — do not mask it with the local
+      // clipboard-based fallback below (that fallback is only for genuine
+      // network failures).
+      rethrow;
     } catch (e) {
       if (localParams.isNotEmpty) {
         return AttributionResult(
@@ -326,10 +352,13 @@ class DeepLinking {
   /// [referralCode] - The referral code to redeem.
   /// [newUserId] - The user ID of the newly installed client.
   /// [rewardDays] - Optional customization of the number of premium reward days to credit.
+  /// [linkId] - Optional tracking link ID, so this call is attributed to that
+  /// link's usage total (recommended: pass your app's master link ID).
   static Future<Map<String, dynamic>> redeemReferral({
     required String referralCode,
     required String newUserId,
     int? rewardDays,
+    String? linkId,
   }) async {
     if (_baseUrl == null || _sdkKey == null) {
       throw StateError(
@@ -345,8 +374,11 @@ class DeepLinking {
         'referralCode': referralCode,
         'newUserId': newUserId,
         if (rewardDays != null) 'rewardDays': rewardDays,
+        if (linkId != null) 'linkId': linkId,
       }),
     );
+
+    _throwIfRateLimited(response);
 
     final jsonResponse = json.decode(response.body);
     if (response.statusCode == 200 && jsonResponse['success'] == true) {
@@ -412,6 +444,8 @@ class DeepLinking {
       body: json.encode(body),
     );
 
+    _throwIfRateLimited(response);
+
     final jsonResponse = json.decode(response.body);
     if (response.statusCode == 200) {
       return jsonResponse;
@@ -457,6 +491,8 @@ class DeepLinking {
       body: json.encode(body),
     );
 
+    _throwIfRateLimited(response);
+
     final jsonResponse = json.decode(response.body);
     if (response.statusCode == 200) {
       return jsonResponse;
@@ -466,11 +502,15 @@ class DeepLinking {
   }
 
   /// Registers the inviter's referral code and FCM token.
+  ///
+  /// [linkId] - Optional tracking link ID, so this call is attributed to that
+  /// link's usage total (recommended: pass your app's master link ID).
   static Future<Map<String, dynamic>> registerSender({
     required String referralCode,
     required String referralFcmToken,
     required String referralUserId,
     required String masterLink,
+    String? linkId,
   }) async {
     if (_baseUrl == null || _appId == null || _sdkKey == null) {
       throw StateError(
@@ -485,6 +525,7 @@ class DeepLinking {
       'referralUserId': referralUserId,
       'masterLink': masterLink,
       'appId': _appId,
+      if (linkId != null) 'linkId': linkId,
     };
 
     final response = await http.post(
@@ -492,6 +533,8 @@ class DeepLinking {
       headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
+
+    _throwIfRateLimited(response);
 
     final jsonResponse = json.decode(response.body);
     if (response.statusCode == 200) {
@@ -571,11 +614,12 @@ class DeepLinking {
       if (clickId != null) 'clickId': clickId,
     };
 
-    await http.post(
+    final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
+    _throwIfRateLimited(response);
   }
 
   /// Tracks when a deep link is opened directly by the app.
@@ -620,11 +664,12 @@ class DeepLinking {
       if (params != null) 'params': params,
     };
 
-    await http.post(
+    final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
+    _throwIfRateLimited(response);
   }
 
   /// Fetches the active plan associated with the configured SDK Key.
