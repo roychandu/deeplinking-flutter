@@ -581,11 +581,12 @@ class DeepLinking {
     }
 
     final url = Uri.parse('$_baseUrl/api/track-premium');
-    await http.post(
+    final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode({'ref': referralCode, 'app_id': appId}),
     );
+    _throwIfRateLimited(response);
   }
 
   /// Syncs the user's FCM push notification token.

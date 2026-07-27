@@ -8,7 +8,7 @@ class SdkLimitExceededException implements Exception {
   SdkLimitExceededException(this.message, {this.used, this.limit});
 
   @override
-  String toString() => message;
+  String toString() => 'SdkLimitExceededException: $message';
 }
 
 class AttributionResult {
