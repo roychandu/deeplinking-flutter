@@ -4,9 +4,23 @@ import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'device_helper.dart';
 
-/// Throws [SdkLimitExceededException] if [response] is a 429 rate-limit
-/// rejection from the backend's plan-based SDK quota enforcement.
-void _throwIfRateLimited(http.Response response) {
+/// Throws [InvalidSdkKeyException] if [response] is a 401 or 403 authentication error
+/// (missing key, invalid key, or app ID not registered).
+/// Throws [SdkLimitExceededException] if [response] is a 429 rate-limit rejection.
+void _throwIfAuthOrRateLimited(http.Response response) {
+  if (response.statusCode == 401 || response.statusCode == 403) {
+    Map<String, dynamic> body;
+    try {
+      body = json.decode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      body = const {};
+    }
+    throw InvalidSdkKeyException(
+      body['error']?.toString() ?? 'Invalid or missing SDK key.',
+      code: body['code']?.toString() ?? 'SDK_KEY_INVALID',
+    );
+  }
+
   if (response.statusCode == 429) {
     Map<String, dynamic> body;
     try {
@@ -303,7 +317,7 @@ class DeepLinking {
         body: json.encode(requestBody),
       );
 
-      _throwIfRateLimited(response);
+      _throwIfAuthOrRateLimited(response);
 
       if (response.statusCode == 200) {
         final jsonResponse = json.decode(response.body);
@@ -330,6 +344,10 @@ class DeepLinking {
       // monthly SDK quota is exhausted — do not mask it with the local
       // clipboard-based fallback below (that fallback is only for genuine
       // network failures).
+      rethrow;
+    } on InvalidSdkKeyException {
+      // The backend explicitly rejected this request because the SDK key
+      // is missing, invalid, or app ID is not registered under the key owner's workspace.
       rethrow;
     } catch (e) {
       if (localParams.isNotEmpty) {
@@ -378,7 +396,7 @@ class DeepLinking {
       }),
     );
 
-    _throwIfRateLimited(response);
+    _throwIfAuthOrRateLimited(response);
 
     final jsonResponse = json.decode(response.body);
     if (response.statusCode == 200 && jsonResponse['success'] == true) {
@@ -444,7 +462,7 @@ class DeepLinking {
       body: json.encode(body),
     );
 
-    _throwIfRateLimited(response);
+    _throwIfAuthOrRateLimited(response);
 
     final jsonResponse = json.decode(response.body);
     if (response.statusCode == 200) {
@@ -491,7 +509,7 @@ class DeepLinking {
       body: json.encode(body),
     );
 
-    _throwIfRateLimited(response);
+    _throwIfAuthOrRateLimited(response);
 
     final jsonResponse = json.decode(response.body);
     if (response.statusCode == 200) {
@@ -534,7 +552,7 @@ class DeepLinking {
       body: json.encode(body),
     );
 
-    _throwIfRateLimited(response);
+    _throwIfAuthOrRateLimited(response);
 
     final jsonResponse = json.decode(response.body);
     if (response.statusCode == 200) {
@@ -586,7 +604,7 @@ class DeepLinking {
       headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode({'ref': referralCode, 'app_id': appId}),
     );
-    _throwIfRateLimited(response);
+    _throwIfAuthOrRateLimited(response);
   }
 
   /// Syncs the user's FCM push notification token.
@@ -620,7 +638,7 @@ class DeepLinking {
       headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
-    _throwIfRateLimited(response);
+    _throwIfAuthOrRateLimited(response);
   }
 
   /// Tracks when a deep link is opened directly by the app.
@@ -670,7 +688,7 @@ class DeepLinking {
       headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
       body: json.encode(body),
     );
-    _throwIfRateLimited(response);
+    _throwIfAuthOrRateLimited(response);
   }
 
   /// Fetches the active plan associated with the configured SDK Key.

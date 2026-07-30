@@ -11,6 +11,18 @@ class SdkLimitExceededException implements Exception {
   String toString() => 'SdkLimitExceededException: $message';
 }
 
+/// Thrown when the backend rejects an SDK call because the provided SDK key
+/// is missing, invalid, format error, or app ID is not registered (HTTP 401 / 403).
+class InvalidSdkKeyException implements Exception {
+  final String message;
+  final String? code;
+
+  InvalidSdkKeyException(this.message, {this.code});
+
+  @override
+  String toString() => 'InvalidSdkKeyException: $message (code: ${code ?? 'SDK_KEY_INVALID'})';
+}
+
 class AttributionResult {
   final bool success;
   final String? method;
