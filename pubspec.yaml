@@ -1,9 +1,9 @@
 name: deeplinking
 description: A lightweight developer-first mobile attribution and deep linking SDK for Link Traker (FDL alternative).
 version: 1.0.0
-homepage: https://github.com/roychandu/Link-Traker
-repository: https://github.com/roychandu/Link-Traker
-issue_tracker: https://github.com/roychandu/Link-Traker/issues
+homepage: https://deeplinking.in
+repository: https://github.com/roychandu/deeplinking-flutter
+issue_tracker: https://github.com/roychandu/deeplinking-flutter/issues
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

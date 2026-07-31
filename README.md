@@ -4,12 +4,11 @@ A lightweight, developer-first, self-hosted Mobile Measurement Partner (MMP) and
 
 ## Installation
 
-Add the package dependency to your Flutter project's `pubspec.yaml`:
+Add `deeplinking` to your Flutter project's `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  deeplinking:
-    path: ../deeplinking-flutter # Or your hosted git URL
+  deeplinking: ^1.0.0
 ```
 
 And run:
@@ -25,15 +24,17 @@ flutter pub get
 Configure the SDK when your app starts (typically in `lib/main.dart`):
 
 ```dart
+import 'package:flutter/material.dart';
 import 'package:deeplinking/deeplinking.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Configure with your self-hosted DeepLinking Vercel server URL
+  // Configure with your server base URL, registered App ID, and Workspace SDK Key
   DeepLinking.configure(
-    baseUrl: 'https://your-app.vercel.app',
-    appId: 'your_unique_app_id',
+    baseUrl: 'https://deeplinking.in',
+    appId: 'com.example.store_room',
+    sdkKey: 'dlk_live_xxxxxxxxxxxxxxxxxxxxxxxx',
   );
 
   runApp(const MyApp());
@@ -44,29 +45,35 @@ void main() {
 
 ## Usage Guide
 
-### 2. Auto-Attuning Installs (Deferred Deep Linking)
+### 2. Auto-Attributing Installs (Deferred Deep Linking)
 When the app launches for the first time, check if the install originated from a tracking link. This will automatically read the click ID from the clipboard or fall back to IP-based fingerprinting.
 
 ```dart
-void checkAttribution() async {
-  final result = await DeepLinking.trackInstall(
-    linkId: 'FALLBACK_LINK_ID', // Used for fingerprint matching
-    installerFcmToken: 'USER_FCM_TOKEN', // Send to enable push notifications
-    installerUserId: 'USER_123', // User ID inside your system
-  );
+void checkAttribution(BuildContext context) async {
+  try {
+    final result = await DeepLinking.trackInstall(
+      linkId: 'FALLBACK_LINK_ID', // Used for fingerprint matching
+      installerFcmToken: 'USER_FCM_TOKEN', // Send to enable push notifications
+      installerUserId: 'USER_123', // User ID inside your system
+    );
 
-  if (result != null && result.success) {
-    print('Successfully attributed install!');
-    print('Method: ${result.method}'); // 'direct' or 'fingerprint'
-    print('Referral Code: ${result.referralCode}');
-    print('Allowed Screens: ${result.allowedScreens}');
-    
-    // Check if the link restricts which screens they can see:
-    if (result.allowedScreens.contains('promo_screen')) {
-      // Navigate user to the promo screen
+    if (result != null && result.success) {
+      print('Successfully attributed install!');
+      print('Method: ${result.method}'); // 'direct' or 'fingerprint'
+      print('Referral Code: ${result.referralCode}');
+      print('Allowed Screens: ${result.allowedScreens}');
+      
+      // Check if the link restricts which screens they can see:
+      if (result.allowedScreens.contains('promo_screen')) {
+        // Navigate user to the promo screen
+      }
+    } else {
+      print('Organic install / No attribution matches.');
     }
-  } else {
-    print('Organic install / No attribution matches.');
+  } on SdkLimitExceededException catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+  } on InvalidSdkKeyException catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
   }
 }
 ```
@@ -75,7 +82,7 @@ void checkAttribution() async {
 When a referred user completes onboarding or registers, call this method to trigger referral rewards. This fires FCM notifications to the referrer and returns the dynamic reward settings.
 
 ```dart
-void redeemUserReferral(String referralCode) async {
+void redeemUserReferral(BuildContext context, String referralCode) async {
   try {
     final response = await DeepLinking.redeemReferral(
       referralCode: referralCode,
@@ -87,26 +94,44 @@ void redeemUserReferral(String referralCode) async {
       final rewardDays = response['rewardDays'];
       print('Referral redeemed! Credited $rewardDays days of premium.');
     }
-  } catch (e) {
-    print('Redeem failed: $e');
+  } on SdkLimitExceededException catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+  } on InvalidSdkKeyException catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
   }
 }
 ```
 
-### 4. Tracking Shares (Virality Rankings)
+### 4. Tracking Shares & CTA Actions
 Log sharing activity immediately before opening the OS Share Sheet. This contributes to your analytics for most-shared screens and products.
 
 ```dart
-void onShareProductClicked() async {
-  await DeepLinking.trackShare(
-    linkId: 'TRACKING_LINK_ID',
-    referralCode: 'SENDER_REF_CODE',
-    screen: 'product_details_screen',
-    source: 'WhatsApp', // WhatsApp, Telegram, copy_link, etc.
-    params: {
-      'productId': 'prod_999',
-      'price': 49.99
-    }
-  );
+void onShareProductClicked(BuildContext context) async {
+  try {
+    await DeepLinking.trackShare(
+      linkId: 'TRACKING_LINK_ID',
+      referralCode: 'SENDER_REF_CODE',
+      screen: 'product_details_screen',
+      eventId: 'share_evt_123',
+      params: {
+        'productId': 'prod_999',
+        'price': 49.99
+      }
+    );
+  } on SdkLimitExceededException catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+  } on InvalidSdkKeyException catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+  }
 }
 ```
+
+---
+
+## Exception Handling
+
+All gated SDK methods throw dedicated typed exceptions on failure:
+
+- **`SdkLimitExceededException`**: Thrown when monthly plan quota is exhausted (`HTTP 429`).
+- **`InvalidSdkKeyException`**: Thrown when SDK key is invalid, missing, or app ID is not registered (`HTTP 401/403`).
+
