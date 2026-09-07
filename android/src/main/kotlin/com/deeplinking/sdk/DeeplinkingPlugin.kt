@@ -125,11 +125,19 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
 
         val isProductScheme = uri.scheme == "storeroom" && uri.host == "product"
         val trackingLinkId = if (isProductScheme) null else uri.pathSegments.lastOrNull()
+        
+        val screens = uri.getQueryParameter("screens")
+        val allowedScreens = uri.getQueryParameter("allowedScreens") ?: screens
         val screen = if (isProductScheme) {
             "ProductDetail"
         } else {
-            uri.getQueryParameter("screen")
+            uri.getQueryParameter("screen") ?: screens?.split(",")?.firstOrNull()
         }
+
+        val permission = uri.getQueryParameter("permission")
+        val permissions = uri.getQueryParameter("permissions") ?: permission
+        val screenPermissions = uri.getQueryParameter("screenPermissions")
+
         val productId = uri.getQueryParameter("productId")
             ?: uri.getQueryParameter("product_id")
             ?: if (isProductScheme) uri.pathSegments.firstOrNull() else null
@@ -137,10 +145,15 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
             ?: uri.getQueryParameter("referralCode")
         val shareId = uri.getQueryParameter("shareId") ?: uri.getQueryParameter("share_id")
 
-        if (screen != null && screen.isNotEmpty()) {
+        if ((screen != null && screen.isNotEmpty()) || (screens != null && screens.isNotEmpty()) || (allowedScreens != null && allowedScreens.isNotEmpty())) {
             val flutterPrefs = context?.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             flutterPrefs?.edit()?.apply {
-                putString("flutter.deep_link_screen", screen)
+                if (screen != null) putString("flutter.deep_link_screen", screen)
+                if (screens != null) putString("flutter.deep_link_screens", screens)
+                if (allowedScreens != null) putString("flutter.deep_link_allowed_screens", allowedScreens)
+                if (permission != null) putString("flutter.deep_link_permission", permission)
+                if (permissions != null) putString("flutter.deep_link_permissions", permissions)
+                if (screenPermissions != null) putString("flutter.deep_link_screen_permissions", screenPermissions)
                 putString("flutter.deep_link_product_id", productId ?: "")
                 apply()
             }
@@ -148,7 +161,12 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
             channel.invokeMethod(
                 "openDeepLink",
                 mapOf(
-                    "screen" to screen,
+                    "screen" to (screen ?: ""),
+                    "screens" to (screens ?: allowedScreens ?: screen ?: ""),
+                    "allowedScreens" to (allowedScreens ?: screens ?: screen ?: ""),
+                    "permission" to (permission ?: ""),
+                    "permissions" to (permissions ?: permission ?: ""),
+                    "screenPermissions" to (screenPermissions ?: ""),
                     "productId" to (productId ?: ""),
                     "linkId" to (trackingLinkId ?: ""),
                     "appState" to appState,
@@ -156,7 +174,7 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
                     "shareId" to (shareId ?: "")
                 )
             )
-            Log.d("DeeplinkingPlugin", "Intent link pushed to Dart: screen=$screen, productId=$productId")
+            Log.d("DeeplinkingPlugin", "Intent link pushed to Dart: screen=$screen, screens=$screens, permissions=$permissions")
         }
 
         // Prevent the same intent from triggering again

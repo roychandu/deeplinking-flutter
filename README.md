@@ -1,6 +1,16 @@
 # `deeplinking` Flutter SDK
 
-A lightweight, developer-first, self-hosted Mobile Measurement Partner (MMP) and attribution package for Flutter. Connects app clicks to app installs, captures P2P referrals, and routes installs to contextual screens.
+A lightweight, developer-first, self-hosted Mobile Measurement Partner (MMP) and attribution package for Flutter. Connects app clicks to app installs, captures P2P referrals, supports multi-screen routing, and enforces granular per-screen permissions.
+
+## Features
+
+- **Deferred Deep Linking**: 100% deterministic attribution via clipboard matching + probabilistic fingerprinting fallback.
+- **Multiple Target Screens**: Direct users to multiple accessible screens (`screens` / `allowedScreens`).
+- **Granular Permissions**: Global permissions (`permissions`) and per-screen capability scoping (`screenPermissions`).
+- **P2P Referral Engine**: Built-in reward crediting and FCM push sync for referrers and invitees.
+- **Native Direct Intent Routing**: Seamless handling for cold-start and warm-start deep link intents.
+
+---
 
 ## Installation
 
@@ -8,7 +18,7 @@ Add `deeplinking` to your Flutter project's `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  deeplinking: ^1.0.0
+  deeplinking: ^1.0.1
 ```
 
 And run:
@@ -61,11 +71,18 @@ void checkAttribution(BuildContext context) async {
       print('Successfully attributed install!');
       print('Method: ${result.method}'); // 'direct' or 'fingerprint'
       print('Referral Code: ${result.referralCode}');
-      print('Allowed Screens: ${result.allowedScreens}');
+      print('Target Screens: ${result.screens}');
+      print('Granted Permissions: ${result.permissions}');
+      print('Per-Screen Permissions: ${result.screenPermissions}');
       
-      // Check if the link restricts which screens they can see:
-      if (result.allowedScreens.contains('promo_screen')) {
-        // Navigate user to the promo screen
+      // Check if user is allowed to access a specific screen:
+      if (result.allowsScreen('PromoScreen')) {
+        Navigator.of(context).pushNamed('/promo');
+      }
+
+      // Check if user has a global or screen-specific permission:
+      if (result.hasScreenPermission('ProductDetail', 'buy')) {
+        // Enable direct purchase button
       }
     } else {
       print('Organic install / No attribution matches.');
@@ -78,8 +95,53 @@ void checkAttribution(BuildContext context) async {
 }
 ```
 
-### 3. Redeeming Referrals & Granting Rewards
-When a referred user completes onboarding or registers, call this method to trigger referral rewards. This fires FCM notifications to the referrer and returns the dynamic reward settings.
+### 3. Registering & Generating Multi-Screen Share Links
+Generate personalized share links with multiple accessible screens and granular per-screen permissions:
+
+```dart
+void generateMultiScreenShare() async {
+  try {
+    final response = await DeepLinking.registerShare(
+      linkId: 'PROMO_LINK_ID',
+      screens: ['Catalog', 'ProductDetail', 'Cart'],
+      permissions: ['read', 'comment', 'vip_access'],
+      screenPermissions: {
+        'ProductDetail': ['view_price', 'add_to_cart'],
+        'Cart': ['apply_coupon'],
+      },
+      senderReferralCode: 'ALICE100',
+      senderUserId: 'user_alice',
+      productId: 'shoe_123',
+    );
+
+    final shareUrl = response['shareUrl'];
+    print('Generated Share Link: $shareUrl');
+  } catch (e) {
+    print('Error registering share: $e');
+  }
+}
+```
+
+### 4. Listening for Direct Deep Links (Native App Links)
+Listen for deep link open events when the app is already installed:
+
+```dart
+@override
+void initState() {
+  super.initState();
+
+  DeepLinking.onDeepLinkOpen((params) {
+    print('Deep link opened natively: $params');
+    final screen = params['screen'];
+    final screens = params['screens'];
+    final permissions = params['permissions'];
+    // Route user accordingly...
+  });
+}
+```
+
+### 5. Redeeming Referrals & Granting Rewards
+When a referred user completes onboarding or registers, call this method to trigger referral rewards. This fires FCM notifications to the referrer and returns the dynamic reward settings:
 
 ```dart
 void redeemUserReferral(BuildContext context, String referralCode) async {
@@ -102,8 +164,8 @@ void redeemUserReferral(BuildContext context, String referralCode) async {
 }
 ```
 
-### 4. Tracking Shares & CTA Actions
-Log sharing activity immediately before opening the OS Share Sheet. This contributes to your analytics for most-shared screens and products.
+### 6. Tracking Shares & CTA Actions
+Log sharing activity immediately before opening the OS Share Sheet. This contributes to your analytics for most-shared screens and products:
 
 ```dart
 void onShareProductClicked(BuildContext context) async {
@@ -111,7 +173,8 @@ void onShareProductClicked(BuildContext context) async {
     await DeepLinking.trackShare(
       linkId: 'TRACKING_LINK_ID',
       referralCode: 'SENDER_REF_CODE',
-      screen: 'product_details_screen',
+      screens: ['ProductDetail', 'Checkout'],
+      permissions: ['view', 'buy'],
       eventId: 'share_evt_123',
       params: {
         'productId': 'prod_999',
@@ -135,3 +198,8 @@ All gated SDK methods throw dedicated typed exceptions on failure:
 - **`SdkLimitExceededException`**: Thrown when monthly plan quota is exhausted (`HTTP 429`).
 - **`InvalidSdkKeyException`**: Thrown when SDK key is invalid, missing, or app ID is not registered (`HTTP 401/403`).
 
+---
+
+## License
+
+MIT

@@ -136,10 +136,13 @@ class DeepLinking {
 
     String? clipboardCid;
     String? parsedLinkId;
-    List<String>? allowedScreens;
+    String? parsedScreen;
+    List<String>? parsedScreens;
     String? parsedReferralCode;
     String? parsedShareId;
     String? parsedPermission;
+    List<String>? parsedPermissions;
+    Map<String, dynamic>? parsedScreenPermissions;
     final Map<String, dynamic> localParams = {};
 
     // 1. Try to read from Clipboard for Direct Attribution
@@ -184,19 +187,44 @@ class DeepLinking {
             print('[SDKDebug] Extracted shareId: $parsedShareId');
           }
 
-          final alsMatch = RegExp(
-            r'__als_([a-zA-Z0-9_,-]+?)(?:__|$)',
+          // Check for multiple screens (__scrs_ or __als_)
+          final scrsMatch = RegExp(
+            r'__(?:scrs|als)_([a-zA-Z0-9_,-]+?)(?:__|$)',
           ).firstMatch(text);
-          if (alsMatch != null && alsMatch.group(1) != null) {
-            allowedScreens = alsMatch
+          if (scrsMatch != null && scrsMatch.group(1) != null) {
+            parsedScreens = scrsMatch
                 .group(1)!
                 .split(',')
                 .map((s) => s.trim())
                 .where((s) => s.isNotEmpty)
                 .toList();
-            print('[SDKDebug] Extracted allowedScreens: $allowedScreens');
+            print('[SDKDebug] Extracted screens: $parsedScreens');
           }
 
+          // Single screen (__scr_)
+          final scrMatch = RegExp(
+            r'__scr_([a-zA-Z0-9_-]+?)(?:__|$)',
+          ).firstMatch(text);
+          if (scrMatch != null) {
+            parsedScreen = scrMatch.group(1);
+            print('[SDKDebug] Extracted single screen: $parsedScreen');
+          }
+
+          // Multiple permissions (__perms_)
+          final permsMatch = RegExp(
+            r'__perms_([a-zA-Z0-9_,-]+?)(?:__|$)',
+          ).firstMatch(text);
+          if (permsMatch != null && permsMatch.group(1) != null) {
+            parsedPermissions = permsMatch
+                .group(1)!
+                .split(',')
+                .map((s) => s.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            print('[SDKDebug] Extracted permissions: $parsedPermissions');
+          }
+
+          // Single permission (__perm_)
           final permMatch = RegExp(
             r'__perm_([a-zA-Z0-9_-]+?)(?:__|$)',
           ).firstMatch(text);
@@ -204,10 +232,23 @@ class DeepLinking {
             parsedPermission = permMatch.group(1);
             print('[SDKDebug] Extracted permission: $parsedPermission');
           }
+
+          // Granular screen permissions (__sperms_)
+          final spermsMatch = RegExp(
+            r'__sperms_([^\n_]+?)(?:__|$)',
+          ).firstMatch(text);
+          if (spermsMatch != null && spermsMatch.group(1) != null) {
+            try {
+              final decoded = json.decode(Uri.decodeComponent(spermsMatch.group(1)!));
+              if (decoded is Map) {
+                parsedScreenPermissions = Map<String, dynamic>.from(decoded);
+              }
+            } catch (_) {}
+          }
         }
-        // ── B. Plain URL format: contains tracking path "/api/t/" ──
-        else if (text.contains('/api/t/')) {
-          print('[SDKDebug] Clipboard matches plain URL format (/api/t/)');
+        // ── B. Plain URL format: contains tracking path "/api/t/" or web URL ──
+        else if (text.contains('/api/t/') || text.contains('http://') || text.contains('https://')) {
+          print('[SDKDebug] Clipboard matches URL format');
           // Parse Link ID: find segment after /api/t/
           final trackingPathIndex = text.indexOf('/api/t/');
           if (trackingPathIndex != -1) {
@@ -219,11 +260,6 @@ class DeepLinking {
             print('[SDKDebug] Extracted LinkID: $parsedLinkId');
           }
 
-          // Parse query parameters
-          // IMPORTANT: clipboard text may be multiline (e.g. share messages like
-          // "Nike Air Force 1\n$109\n\nView on Store Room: https://...").
-          // Uri.parse on the full text silently returns an empty URI.
-          // We must extract just the URL first.
           try {
             final urlMatch = RegExp(r'https?://\S+').firstMatch(text);
             final rawUrl = urlMatch?.group(0) ?? text;
@@ -245,20 +281,44 @@ class DeepLinking {
             if (uri.queryParameters.containsKey('permission')) {
               parsedPermission = uri.queryParameters['permission'];
             }
-            print('[SDKDebug] Extracted permission: $parsedPermission');
-
-            if (uri.queryParameters.containsKey('allowedScreens')) {
-              allowedScreens = uri.queryParameters['allowedScreens']!
+            if (uri.queryParameters.containsKey('permissions')) {
+              parsedPermissions = uri.queryParameters['permissions']!
                   .split(',')
                   .map((s) => s.trim())
                   .where((s) => s.isNotEmpty)
                   .toList();
             }
-            print('[SDKDebug] Extracted allowedScreens: $allowedScreens');
+            print('[SDKDebug] Extracted permissions: $parsedPermissions, single: $parsedPermission');
+
+            if (uri.queryParameters.containsKey('screens')) {
+              parsedScreens = uri.queryParameters['screens']!
+                  .split(',')
+                  .map((s) => s.trim())
+                  .where((s) => s.isNotEmpty)
+                  .toList();
+            } else if (uri.queryParameters.containsKey('allowedScreens')) {
+              parsedScreens = uri.queryParameters['allowedScreens']!
+                  .split(',')
+                  .map((s) => s.trim())
+                  .where((s) => s.isNotEmpty)
+                  .toList();
+            }
+            print('[SDKDebug] Extracted screens: $parsedScreens');
 
             if (uri.queryParameters.containsKey('screen')) {
-              localParams['screen'] = uri.queryParameters['screen'];
+              parsedScreen = uri.queryParameters['screen'];
+              localParams['screen'] = parsedScreen;
             }
+
+            if (uri.queryParameters.containsKey('screenPermissions')) {
+              try {
+                final decoded = json.decode(uri.queryParameters['screenPermissions']!);
+                if (decoded is Map) {
+                  parsedScreenPermissions = Map<String, dynamic>.from(decoded);
+                }
+              } catch (_) {}
+            }
+
             if (uri.queryParameters.containsKey('productId')) {
               localParams['productId'] = uri.queryParameters['productId'];
             } else if (uri.queryParameters.containsKey('product_id')) {
@@ -271,6 +331,18 @@ class DeepLinking {
     } catch (e) {
       // Clipboard read failed (e.g., restricted permissions or running on desktop without clipboard access)
     }
+
+    // Combine screens list & primary screen
+    final combinedScreens = parsedScreens ??
+        (parsedScreen != null && parsedScreen.isNotEmpty ? [parsedScreen] : null);
+    final primaryScreen = parsedScreen ??
+        (combinedScreens != null && combinedScreens.isNotEmpty ? combinedScreens.first : null);
+
+    // Combine permissions list & primary permission
+    final combinedPermissions = parsedPermissions ??
+        (parsedPermission != null && parsedPermission.isNotEmpty ? [parsedPermission] : null);
+    final primaryPermission = parsedPermission ??
+        (combinedPermissions != null && combinedPermissions.isNotEmpty ? combinedPermissions.first : null);
 
     // 2. Fetch device details for fallback fingerprint matching
     final deviceInfo = await DeviceHelper.getDeviceInfo();
@@ -301,11 +373,21 @@ class DeepLinking {
     if (parsedShareId != null) {
       requestBody['shareId'] = parsedShareId;
     }
-    if (parsedPermission != null) {
-      requestBody['permission'] = parsedPermission;
+    if (primaryScreen != null) {
+      requestBody['screen'] = primaryScreen;
     }
-    if (allowedScreens != null && allowedScreens.isNotEmpty) {
-      requestBody['allowedScreens'] = allowedScreens.join(',');
+    if (combinedScreens != null && combinedScreens.isNotEmpty) {
+      requestBody['screens'] = combinedScreens;
+      requestBody['allowedScreens'] = combinedScreens.join(',');
+    }
+    if (primaryPermission != null) {
+      requestBody['permission'] = primaryPermission;
+    }
+    if (combinedPermissions != null && combinedPermissions.isNotEmpty) {
+      requestBody['permissions'] = combinedPermissions;
+    }
+    if (parsedScreenPermissions != null && parsedScreenPermissions.isNotEmpty) {
+      requestBody['screenPermissions'] = parsedScreenPermissions;
     }
 
     // 4. Send network call to backend
@@ -327,12 +409,16 @@ class DeepLinking {
         }
         return result;
       } else {
-        if (localParams.isNotEmpty) {
+        if (localParams.isNotEmpty || combinedScreens != null || parsedReferralCode != null) {
           return AttributionResult(
             success: true,
             isInstall: true,
-            allowedScreens: allowedScreens ?? [],
-            permission: parsedPermission,
+            screen: primaryScreen,
+            screens: combinedScreens ?? [],
+            allowedScreens: combinedScreens ?? [],
+            permission: primaryPermission,
+            permissions: combinedPermissions ?? [],
+            screenPermissions: parsedScreenPermissions ?? {},
             referralCode: parsedReferralCode,
             rawParams: localParams,
           );
@@ -341,21 +427,23 @@ class DeepLinking {
       }
     } on SdkLimitExceededException {
       // The backend explicitly rejected this request because the plan's
-      // monthly SDK quota is exhausted — do not mask it with the local
-      // clipboard-based fallback below (that fallback is only for genuine
-      // network failures).
+      // monthly SDK quota is exhausted.
       rethrow;
     } on InvalidSdkKeyException {
       // The backend explicitly rejected this request because the SDK key
       // is missing, invalid, or app ID is not registered under the key owner's workspace.
       rethrow;
     } catch (e) {
-      if (localParams.isNotEmpty) {
+      if (localParams.isNotEmpty || combinedScreens != null || parsedReferralCode != null) {
         return AttributionResult(
           success: true,
           isInstall: true,
-          allowedScreens: allowedScreens ?? [],
-          permission: parsedPermission,
+          screen: primaryScreen,
+          screens: combinedScreens ?? [],
+          allowedScreens: combinedScreens ?? [],
+          permission: primaryPermission,
+          permissions: combinedPermissions ?? [],
+          screenPermissions: parsedScreenPermissions ?? {},
           referralCode: parsedReferralCode,
           rawParams: localParams,
         );
@@ -408,11 +496,16 @@ class DeepLinking {
     }
   }
 
-  /// Tracks when a user shares a link (captures the product, screen, and user rankings).
+  /// Tracks when a user shares a link (captures the product, screens, permissions, and rankings).
   ///
   /// [linkId] - The tracking link ID being shared.
   /// [referralCode] - The sharing user's referral code.
-  /// [screen] - The screen name from which the share was initiated.
+  /// [screen] - The primary screen name from which the share was initiated.
+  /// [screens] - Multiple target screens allowed/intended for the shared link.
+  /// [allowedScreens] - Synonym/alias for [screens].
+  /// [permission] - Single permission level (e.g. "read", "vip").
+  /// [permissions] - Multiple permissions granted for this share.
+  /// [screenPermissions] - Granular per-screen permissions map.
   /// [referralUserId] - The user ID of the referrer.
   /// [referralFcmToken] - The FCM token of the referrer.
   /// [fcmToken] - Optional FCM token of the current user.
@@ -424,7 +517,12 @@ class DeepLinking {
   static Future<Map<String, dynamic>> trackShare({
     required String linkId,
     required String referralCode,
-    required String screen,
+    String? screen,
+    List<String>? screens,
+    List<String>? allowedScreens,
+    String? permission,
+    List<String>? permissions,
+    Map<String, dynamic>? screenPermissions,
     String? referralUserId,
     String? referralFcmToken,
     String? fcmToken,
@@ -440,13 +538,37 @@ class DeepLinking {
       );
     }
 
+    final combinedScreens = screens ??
+        allowedScreens ??
+        (screen != null && screen.isNotEmpty ? [screen] : null);
+    final primaryScreen = screen ??
+        (combinedScreens != null && combinedScreens.isNotEmpty
+            ? combinedScreens.first
+            : 'Home');
+
+    final combinedPermissions = permissions ??
+        (permission != null && permission.isNotEmpty ? [permission] : null);
+    final primaryPermission = permission ??
+        (combinedPermissions != null && combinedPermissions.isNotEmpty
+            ? combinedPermissions.first
+            : null);
+
     final url = Uri.parse('$_baseUrl/api/track-share');
     final Map<String, dynamic> body = {
       'linkId': linkId,
       'referralCode': referralCode,
-      'screen': screen,
+      'screen': primaryScreen,
       'appId': _appId,
       'eventId': eventId ?? 'share_${DateTime.now().millisecondsSinceEpoch}',
+      if (combinedScreens != null && combinedScreens.isNotEmpty)
+        'screens': combinedScreens,
+      if (combinedScreens != null && combinedScreens.isNotEmpty)
+        'allowedScreens': combinedScreens.join(','),
+      if (primaryPermission != null) 'permission': primaryPermission,
+      if (combinedPermissions != null && combinedPermissions.isNotEmpty)
+        'permissions': combinedPermissions,
+      if (screenPermissions != null && screenPermissions.isNotEmpty)
+        'screenPermissions': screenPermissions,
       if (referralUserId != null) 'referralUserId': referralUserId,
       if (referralFcmToken != null) 'referralFcmToken': referralFcmToken,
       if (fcmToken != null) 'fcmToken': fcmToken,
@@ -473,15 +595,21 @@ class DeepLinking {
   }
 
   /// Registers a share event with the tracking backend.
+  ///
+  /// Supports single [screen] or multiple [screens] / [allowedScreens],
+  /// single [permission] or multiple [permissions], and granular [screenPermissions].
   static Future<Map<String, dynamic>> registerShare({
     required String linkId,
-    required String screen,
+    String? screen,
+    List<String>? screens,
+    List<String>? allowedScreens,
+    String? permission,
+    List<String>? permissions,
+    Map<String, dynamic>? screenPermissions,
     String? senderReferralCode,
     String? senderFcmToken,
     String? senderUserId,
     String? productId,
-    String? permission,
-    List<String>? allowedScreens,
   }) async {
     if (_baseUrl == null || _appId == null || _sdkKey == null) {
       throw StateError(
@@ -489,18 +617,39 @@ class DeepLinking {
       );
     }
 
+    final combinedScreens = screens ??
+        allowedScreens ??
+        (screen != null && screen.isNotEmpty ? [screen] : null);
+    final primaryScreen = screen ??
+        (combinedScreens != null && combinedScreens.isNotEmpty
+            ? combinedScreens.first
+            : null);
+
+    final combinedPermissions = permissions ??
+        (permission != null && permission.isNotEmpty ? [permission] : null);
+    final primaryPermission = permission ??
+        (combinedPermissions != null && combinedPermissions.isNotEmpty
+            ? combinedPermissions.first
+            : null);
+
     final url = Uri.parse('$_baseUrl/api/shares/register');
     final Map<String, dynamic> body = {
       'linkId': linkId,
       'appId': _appId,
-      'screen': screen,
+      if (primaryScreen != null) 'screen': primaryScreen,
+      if (combinedScreens != null && combinedScreens.isNotEmpty)
+        'screens': combinedScreens,
+      if (combinedScreens != null && combinedScreens.isNotEmpty)
+        'allowedScreens': combinedScreens.join(','),
+      if (primaryPermission != null) 'permission': primaryPermission,
+      if (combinedPermissions != null && combinedPermissions.isNotEmpty)
+        'permissions': combinedPermissions,
+      if (screenPermissions != null && screenPermissions.isNotEmpty)
+        'screenPermissions': screenPermissions,
       if (senderReferralCode != null) 'senderReferralCode': senderReferralCode,
       if (senderFcmToken != null) 'senderFcmToken': senderFcmToken,
       if (senderUserId != null) 'senderUserId': senderUserId,
       if (productId != null) 'productId': productId,
-      if (permission != null) 'permission': permission,
-      if (allowedScreens != null && allowedScreens.isNotEmpty)
-        'allowedScreens': allowedScreens.join(','),
     };
 
     final response = await http.post(
@@ -644,7 +793,12 @@ class DeepLinking {
   /// Tracks when a deep link is opened directly by the app.
   static Future<void> trackDeepLinkOpen({
     required String linkId,
-    required String screen,
+    String? screen,
+    List<String>? screens,
+    List<String>? allowedScreens,
+    String? permission,
+    List<String>? permissions,
+    Map<String, dynamic>? screenPermissions,
     required String targetId,
     required String appState,
     String? referralCode,
@@ -662,6 +816,21 @@ class DeepLinking {
       );
     }
 
+    final combinedScreens = screens ??
+        allowedScreens ??
+        (screen != null && screen.isNotEmpty ? [screen] : null);
+    final primaryScreen = screen ??
+        (combinedScreens != null && combinedScreens.isNotEmpty
+            ? combinedScreens.first
+            : 'Home');
+
+    final combinedPermissions = permissions ??
+        (permission != null && permission.isNotEmpty ? [permission] : null);
+    final primaryPermission = permission ??
+        (combinedPermissions != null && combinedPermissions.isNotEmpty
+            ? combinedPermissions.first
+            : null);
+
     final url = Uri.parse('$_baseUrl/api/track-deep-link-open');
     final Map<String, dynamic> body = {
       'eventId': 'dl_open_${DateTime.now().millisecondsSinceEpoch}',
@@ -672,7 +841,16 @@ class DeepLinking {
       'appState': appState,
       'source': 'app_link',
       'platform': platform ?? 'android',
-      'screen': screen,
+      'screen': primaryScreen,
+      if (combinedScreens != null && combinedScreens.isNotEmpty)
+        'screens': combinedScreens,
+      if (combinedScreens != null && combinedScreens.isNotEmpty)
+        'allowedScreens': combinedScreens.join(','),
+      if (primaryPermission != null) 'permission': primaryPermission,
+      if (combinedPermissions != null && combinedPermissions.isNotEmpty)
+        'permissions': combinedPermissions,
+      if (screenPermissions != null && screenPermissions.isNotEmpty)
+        'screenPermissions': screenPermissions,
       'targetId': targetId,
       if (referralCode != null) 'referralCode': referralCode,
       if (shareId != null) 'shareId': shareId,
@@ -700,7 +878,9 @@ class DeepLinking {
       );
     }
 
-    final url = Uri.parse('$_baseUrl/api/sdk/plan?key=${Uri.encodeComponent(_sdkKey!)}');
+    final url = Uri.parse(
+      '$_baseUrl/api/sdk/plan?key=${Uri.encodeComponent(_sdkKey!)}',
+    );
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
