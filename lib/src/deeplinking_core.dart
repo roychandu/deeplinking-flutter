@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -79,6 +81,47 @@ class DeepLinking {
   /// Register a callback to be notified when a deep link intent is received.
   static void onDeepLinkOpen(void Function(Map<String, String>) callback) {
     _onDeepLinkOpenListener = callback;
+  }
+
+  static void Function(SharePermissionUpdate)? _onPermissionUpdatedListener;
+
+  /// Register a callback to be notified when permissions for this device or shareId are updated in real-time.
+  static void onPermissionUpdated(void Function(SharePermissionUpdate) callback) {
+    _onPermissionUpdatedListener = callback;
+  }
+
+  static final StreamController<SharePermissionUpdate> _permissionUpdateController =
+      StreamController<SharePermissionUpdate>.broadcast();
+
+  /// Stream of real-time permission updates pushed from the backend via FCM.
+  static Stream<SharePermissionUpdate> get permissionUpdates =>
+      _permissionUpdateController.stream;
+
+  /// ValueNotifier holding the latest permission update for easy integration with [ValueListenableBuilder].
+  static final ValueNotifier<SharePermissionUpdate?> permissionUpdateNotifier =
+      ValueNotifier<SharePermissionUpdate?>(null);
+
+  /// Handles incoming push notification data (e.g. from FirebaseMessaging.onMessage or onBackgroundMessage).
+  /// If the payload is a `permission_updated` event, it parses the permissions,
+  /// updates [permissionUpdateNotifier], emits on [permissionUpdates], invokes any listener
+  /// registered via [onPermissionUpdated], and returns the parsed [SharePermissionUpdate].
+  static SharePermissionUpdate? handleNotificationData(Map<String, dynamic> data) {
+    final type = data["type"]?.toString();
+    final action = data["action"]?.toString();
+    if (type == "permission_updated" || action == "update_permissions") {
+      try {
+        final update = SharePermissionUpdate.fromMap(data);
+        permissionUpdateNotifier.value = update;
+        _permissionUpdateController.add(update);
+        if (_onPermissionUpdatedListener != null) {
+          _onPermissionUpdatedListener!(update);
+        }
+        return update;
+      } catch (e) {
+        debugPrint("[DeepLinking] Error parsing permission update notification: $e");
+      }
+    }
+    return null;
   }
 
   static Future<dynamic> _handleSdkMethodCall(MethodCall call) async {
@@ -185,6 +228,10 @@ class DeepLinking {
           if (shMatch != null) {
             parsedShareId = shMatch.group(1);
             print('[SDKDebug] Extracted shareId: $parsedShareId');
+            if (parsedShareId != null && parsedShareId.isNotEmpty) {
+              localParams['shareId'] = parsedShareId;
+              localParams['share_id'] = parsedShareId;
+            }
           }
 
           // Check for multiple screens (__scrs_ or __als_)
@@ -277,6 +324,10 @@ class DeepLinking {
               parsedShareId = uri.queryParameters['share_id'];
             }
             print('[SDKDebug] Extracted shareId: $parsedShareId');
+            if (parsedShareId != null && parsedShareId.isNotEmpty) {
+              localParams['shareId'] = parsedShareId;
+              localParams['share_id'] = parsedShareId;
+            }
 
             if (uri.queryParameters.containsKey('permission')) {
               parsedPermission = uri.queryParameters['permission'];
@@ -413,6 +464,7 @@ class DeepLinking {
           return AttributionResult(
             success: true,
             isInstall: true,
+            shareId: parsedShareId,
             screen: primaryScreen,
             screens: combinedScreens ?? [],
             allowedScreens: combinedScreens ?? [],
@@ -600,6 +652,7 @@ class DeepLinking {
   /// single [permission] or multiple [permissions], and granular [screenPermissions].
   static Future<Map<String, dynamic>> registerShare({
     required String linkId,
+    String? shareId,
     String? screen,
     List<String>? screens,
     List<String>? allowedScreens,
@@ -636,6 +689,7 @@ class DeepLinking {
     final Map<String, dynamic> body = {
       'linkId': linkId,
       'appId': _appId,
+      if (shareId != null) 'shareId': shareId,
       if (primaryScreen != null) 'screen': primaryScreen,
       if (combinedScreens != null && combinedScreens.isNotEmpty)
         'screens': combinedScreens,
@@ -666,6 +720,122 @@ class DeepLinking {
     } else {
       throw Exception(jsonResponse['error'] ?? 'Failed to register share.');
     }
+  }
+
+
+
+  /// Updates an existing share record in the database with updated permissions,
+  /// screens, and target parameters in real-time.
+  ///
+  /// Calls  on the tracking backend.
+  static Future<Map<String, dynamic>> updateShare({
+    required String linkId,
+    required String shareId,
+    String? screen,
+    List<String>? screens,
+    List<String>? allowedScreens,
+    String? permission,
+    List<String>? permissions,
+    Map<String, dynamic>? screenPermissions,
+    String? productId,
+    bool? notifySender,
+    String? notificationTitle,
+    String? notificationBody,
+    bool? silent,
+  }) async {
+    if (_baseUrl == null || _appId == null || _sdkKey == null) {
+      throw StateError(
+        'DeepLinking is not configured. Call DeepLinking.configure() first with a valid SDK Key.',
+      );
+    }
+
+    final combinedScreens = screens ??
+        allowedScreens ??
+        (screen != null && screen.isNotEmpty ? [screen] : null);
+    final primaryScreen = screen ??
+        (combinedScreens != null && combinedScreens.isNotEmpty
+            ? combinedScreens.first
+            : null);
+
+    final combinedPermissions = permissions ??
+        (permission != null && permission.isNotEmpty ? [permission] : null);
+    final primaryPermission = permission ??
+        (combinedPermissions != null && combinedPermissions.isNotEmpty
+            ? combinedPermissions.first
+            : null);
+
+    final url = Uri.parse('$_baseUrl/api/shares/update');
+    final Map<String, dynamic> body = {
+      'linkId': linkId,
+      'shareId': shareId,
+      'appId': _appId,
+      if (primaryScreen != null) 'screen': primaryScreen,
+      if (combinedScreens != null && combinedScreens.isNotEmpty)
+        'screens': combinedScreens,
+      if (combinedScreens != null && combinedScreens.isNotEmpty)
+        'allowedScreens': combinedScreens.join(','),
+      if (primaryPermission != null) 'permission': primaryPermission,
+      if (combinedPermissions != null && combinedPermissions.isNotEmpty)
+        'permissions': combinedPermissions,
+      if (screenPermissions != null && screenPermissions.isNotEmpty)
+        'screenPermissions': screenPermissions,
+      if (productId != null) 'productId': productId,
+      if (notifySender != null) 'notifySender': notifySender,
+      if (notificationTitle != null) 'notificationTitle': notificationTitle,
+      if (notificationBody != null) 'notificationBody': notificationBody,
+      if (silent != null) 'silent': silent,
+    };
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
+      body: json.encode(body),
+    );
+
+    _throwIfAuthOrRateLimited(response);
+
+    final jsonResponse = json.decode(response.body);
+    if (response.statusCode == 200) {
+      return jsonResponse;
+    } else {
+      throw Exception(jsonResponse['error'] ?? 'Failed to update share.');
+    }
+  }
+
+  /// Retrieves the latest live permissions, screens, and parameters for an existing share from the backend database.
+  static Future<Map<String, dynamic>?> getShareDetails({
+    required String linkId,
+    String? shareId,
+    String? userId,
+  }) async {
+    if (_baseUrl == null || _sdkKey == null) {
+      throw StateError(
+        'DeepLinking is not configured. Call DeepLinking.configure() first with a valid SDK Key.',
+      );
+    }
+
+    final queryParams = <String, String>{
+      'linkId': linkId,
+      if (shareId != null && shareId.isNotEmpty) 'shareId': shareId,
+      if (userId != null && userId.isNotEmpty) 'userId': userId,
+    };
+
+    final url = Uri.parse('$_baseUrl/api/shares/details')
+        .replace(queryParameters: queryParams);
+    final response = await http.get(
+      url,
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
+    );
+
+    _throwIfAuthOrRateLimited(response);
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final decoded = json.decode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    }
+    return null;
   }
 
   /// Registers the inviter's referral code and FCM token.
@@ -791,7 +961,7 @@ class DeepLinking {
   }
 
   /// Tracks when a deep link is opened directly by the app.
-  static Future<void> trackDeepLinkOpen({
+  static Future<Map<String, dynamic>> trackDeepLinkOpen({
     required String linkId,
     String? screen,
     List<String>? screens,
@@ -867,6 +1037,16 @@ class DeepLinking {
       body: json.encode(body),
     );
     _throwIfAuthOrRateLimited(response);
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      try {
+        final decoded = json.decode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
+      } catch (_) {}
+    }
+    return <String, dynamic>{};
   }
 
   /// Fetches the active plan associated with the configured SDK Key.

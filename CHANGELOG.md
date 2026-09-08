@@ -1,5 +1,11 @@
 ## 1.0.1
 
+* Added real-time permission update support via FCM push notifications.
+* Introduced `SharePermissionUpdate` model for parsing and handling live permission changes.
+* Added `DeepLinking.onPermissionUpdated` callback and `DeepLinking.permissionUpdates` stream.
+* Added `DeepLinking.permissionUpdateNotifier` for reactive UI binding via `ValueListenableBuilder`.
+* Added `DeepLinking.handleNotificationData(data)` to parse incoming FCM payloads.
+* Extended `DeepLinking.updateShare` with `notifySender`, `notificationTitle`, `notificationBody`, and `silent` options.
 * Added support for **Multiple Target Screens** (`screens`, `allowedScreens`) in attribution and share registration.
 * Added support for **Multiple Permissions** (`permissions`, `permission`) and granular **Per-Screen Permissions** (`screenPermissions`).
 * Added helper query methods to `AttributionResult`: `hasPermission()`, `hasScreenPermission()`, and `allowsScreen()`.

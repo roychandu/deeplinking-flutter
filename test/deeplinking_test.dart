@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:deeplinking/deeplinking.dart';
 
@@ -139,6 +140,79 @@ void main() {
         ),
         returnsNormally,
       );
+    });
+  });
+
+  group('DeepLinking Share Update Tests', () {
+    test('getShareDetails builds valid absolute URI and executes', () async {
+      DeepLinking.configure(
+        baseUrl: 'https://deeplinking.in',
+        appId: 'com.example.app',
+        sdkKey: 'test_key',
+      );
+      try {
+        await DeepLinking.getShareDetails(
+          linkId: 'test_link',
+          shareId: 'sh_123',
+        );
+      } catch (e) {
+        expect(e.toString().contains('No host specified'), isFalse);
+      }
+    });
+
+    test('updateShare builds valid absolute URI and executes', () async {
+      DeepLinking.configure(
+        baseUrl: 'https://deeplinking.in',
+        appId: 'com.example.app',
+        sdkKey: 'test_key',
+      );
+      try {
+        await DeepLinking.updateShare(
+          linkId: 'test_link',
+          shareId: 'sh_123',
+          permissions: ['reports.read'],
+        );
+      } catch (e) {
+        // Must NOT fail with 'No host specified in URI'
+        expect(e.toString().contains('No host specified'), isFalse);
+      }
+    });
+    test("SharePermissionUpdate parses FCM payload and triggers listener", () {
+      final payload = <String, dynamic>{
+        "type": "permission_updated",
+        "action": "update_permissions",
+        "shareId": "sh_realtime_001",
+        "linkId": "link_test",
+        "permission": "editor",
+        "permissions": jsonEncode(["editor", "reports"]),
+        "screen": "Dashboard",
+        "screens": jsonEncode(["Dashboard", "Reports"]),
+        "screenPermissions": jsonEncode({"Dashboard": "editor", "Reports": "view"}),
+        "productId": "prod_99",
+      };
+
+      SharePermissionUpdate? received;
+      DeepLinking.onPermissionUpdated((update) {
+        received = update;
+      });
+
+      final result = DeepLinking.handleNotificationData(payload);
+      expect(result, isNotNull);
+      expect(result!.shareId, equals("sh_realtime_001"));
+      expect(result.permission, equals("editor"));
+      expect(result.permissions, contains("editor"));
+      expect(result.permissions, contains("reports"));
+      expect(result.screens, contains("Dashboard"));
+      expect(result.hasPermission("editor"), isTrue);
+      expect(result.hasPermission("reports"), isTrue);
+      expect(result.hasPermission("unknown"), isFalse);
+      expect(result.hasScreenPermission("Dashboard", "editor"), isTrue);
+      expect(result.allowsScreen("Dashboard"), isTrue);
+      expect(result.allowsScreen("Unknown"), isFalse);
+
+      expect(received, isNotNull);
+      expect(received!.shareId, equals("sh_realtime_001"));
+      expect(DeepLinking.permissionUpdateNotifier.value?.shareId, equals("sh_realtime_001"));
     });
   });
 }
