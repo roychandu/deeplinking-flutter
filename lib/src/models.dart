@@ -226,7 +226,9 @@ class AttributionResult {
     final String? parsedShareId = data['shareId']?.toString() ??
         data['params']?['shareId']?.toString() ??
         data['params']?['share_id']?.toString() ??
-        json['shareId']?.toString();
+        data['params']?['s']?.toString() ??
+        json['shareId']?.toString() ??
+        json['s']?.toString();
 
     final rawParamsMap = Map<String, dynamic>.from(data['params'] ?? {});
     if (parsedShareId != null && parsedShareId.isNotEmpty) {

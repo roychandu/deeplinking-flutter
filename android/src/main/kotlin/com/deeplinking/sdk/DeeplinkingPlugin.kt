@@ -119,12 +119,14 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
 
     private fun handleIntent(intent: Intent?, appState: String) {
         val uri = intent?.data ?: return
-        if (uri.scheme != "https" && uri.scheme != "storeroom") return
+        if (uri.scheme != "http" && uri.scheme != "https" && uri.scheme != "storeroom") return
 
         Log.d("DeeplinkingPlugin", "handleIntent URI: $uri ($appState)")
 
         val isProductScheme = uri.scheme == "storeroom" && uri.host == "product"
-        val trackingLinkId = if (isProductScheme) null else uri.pathSegments.lastOrNull()
+        val isShortUrl = uri.pathSegments.firstOrNull() == "s"
+        val trackingLinkId = if (isProductScheme) null else if (isShortUrl) null else uri.pathSegments.lastOrNull()
+        val shortCode = if (isShortUrl) uri.pathSegments.getOrNull(1) else null
         
         val screens = uri.getQueryParameter("screens")
         val allowedScreens = uri.getQueryParameter("allowedScreens") ?: screens
@@ -143,9 +145,12 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
             ?: if (isProductScheme) uri.pathSegments.firstOrNull() else null
         val referralCode = uri.getQueryParameter("ref")
             ?: uri.getQueryParameter("referralCode")
-        val shareId = uri.getQueryParameter("shareId") ?: uri.getQueryParameter("share_id")
+        val shareId = uri.getQueryParameter("shareId") ?: uri.getQueryParameter("share_id") ?: uri.getQueryParameter("s") ?: if (shortCode != null && shortCode.startsWith("sh_")) shortCode else null
 
-        if ((screen != null && screen.isNotEmpty()) || (screens != null && screens.isNotEmpty()) || (allowedScreens != null && allowedScreens.isNotEmpty())) {
+        val hasShareOrShort = (shareId != null && shareId.isNotEmpty()) || (shortCode != null && shortCode.isNotEmpty())
+        val hasScreen = (screen != null && screen.isNotEmpty()) || (screens != null && screens.isNotEmpty()) || (allowedScreens != null && allowedScreens.isNotEmpty())
+
+        if (hasScreen || hasShareOrShort) {
             val flutterPrefs = context?.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             flutterPrefs?.edit()?.apply {
                 if (screen != null) putString("flutter.deep_link_screen", screen)
@@ -155,6 +160,7 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
                 if (permissions != null) putString("flutter.deep_link_permissions", permissions)
                 if (screenPermissions != null) putString("flutter.deep_link_screen_permissions", screenPermissions)
                 putString("flutter.deep_link_product_id", productId ?: "")
+                if (shareId != null) putString("flutter.deep_link_share_id", shareId)
                 apply()
             }
 
@@ -171,7 +177,9 @@ class DeeplinkingPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, NewInt
                     "linkId" to (trackingLinkId ?: ""),
                     "appState" to appState,
                     "referralCode" to (referralCode ?: ""),
-                    "shareId" to (shareId ?: "")
+                    "shareId" to (shareId ?: ""),
+                    "s" to (shareId ?: shortCode ?: ""),
+                    "shortCode" to (shortCode ?: "")
                 )
             )
             Log.d("DeeplinkingPlugin", "Intent link pushed to Dart: screen=$screen, screens=$screens, permissions=$permissions")

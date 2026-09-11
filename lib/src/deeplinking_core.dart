@@ -307,6 +307,22 @@ class DeepLinking {
             print('[SDKDebug] Extracted LinkID: $parsedLinkId');
           }
 
+          // Parse short link: find segment after /s/
+          final shortPathIndex = text.indexOf('/s/');
+          if (shortPathIndex != -1) {
+            final startOfCode = shortPathIndex + '/s/'.length;
+            final endOfCode = text.indexOf(RegExp(r'[\?/\s]'), startOfCode);
+            final shortCode = endOfCode != -1
+                ? text.substring(startOfCode, endOfCode)
+                : text.substring(startOfCode);
+            if (shortCode.isNotEmpty) {
+              parsedShareId ??= shortCode;
+              localParams['shortCode'] = shortCode;
+              localParams['shareId'] = shortCode;
+              print('[SDKDebug] Extracted shortCode: $shortCode');
+            }
+          }
+
           try {
             final urlMatch = RegExp(r'https?://\S+').firstMatch(text);
             final rawUrl = urlMatch?.group(0) ?? text;
@@ -322,11 +338,14 @@ class DeepLinking {
               parsedShareId = uri.queryParameters['shareId'];
             } else if (uri.queryParameters.containsKey('share_id')) {
               parsedShareId = uri.queryParameters['share_id'];
+            } else if (uri.queryParameters.containsKey('s')) {
+              parsedShareId = uri.queryParameters['s'];
             }
             print('[SDKDebug] Extracted shareId: $parsedShareId');
             if (parsedShareId != null && parsedShareId.isNotEmpty) {
               localParams['shareId'] = parsedShareId;
               localParams['share_id'] = parsedShareId;
+              localParams['s'] = parsedShareId;
             }
 
             if (uri.queryParameters.containsKey('permission')) {
@@ -423,6 +442,9 @@ class DeepLinking {
     }
     if (parsedShareId != null) {
       requestBody['shareId'] = parsedShareId;
+      requestBody['share_id'] = parsedShareId;
+      requestBody['shared_id'] = parsedShareId;
+      requestBody['s'] = parsedShareId;
     }
     if (primaryScreen != null) {
       requestBody['screen'] = primaryScreen;
@@ -689,7 +711,12 @@ class DeepLinking {
     final Map<String, dynamic> body = {
       'linkId': linkId,
       'appId': _appId,
-      if (shareId != null) 'shareId': shareId,
+      if (shareId != null) ...{
+        'shareId': shareId,
+        'share_id': shareId,
+        'shared_id': shareId,
+        's': shareId,
+      },
       if (primaryScreen != null) 'screen': primaryScreen,
       if (combinedScreens != null && combinedScreens.isNotEmpty)
         'screens': combinedScreens,
@@ -768,6 +795,9 @@ class DeepLinking {
     final Map<String, dynamic> body = {
       'linkId': linkId,
       'shareId': shareId,
+      'share_id': shareId,
+      'shared_id': shareId,
+      's': shareId,
       'appId': _appId,
       if (primaryScreen != null) 'screen': primaryScreen,
       if (combinedScreens != null && combinedScreens.isNotEmpty)
@@ -816,7 +846,12 @@ class DeepLinking {
 
     final queryParams = <String, String>{
       'linkId': linkId,
-      if (shareId != null && shareId.isNotEmpty) 'shareId': shareId,
+      if (shareId != null && shareId.isNotEmpty) ...{
+        'shareId': shareId,
+        'share_id': shareId,
+        'shared_id': shareId,
+        's': shareId,
+      },
       if (userId != null && userId.isNotEmpty) 'userId': userId,
     };
 
@@ -836,6 +871,50 @@ class DeepLinking {
       }
     }
     return null;
+  }
+
+  /// Generates a branded short URL for a tracking link or share.
+  /// Calls  on the backend.
+  static Future<Map<String, dynamic>> shortenLink({
+    required String linkId,
+    String? shareId,
+    String? customCode,
+    String? customDomain,
+  }) async {
+    if (_baseUrl == null || _appId == null || _sdkKey == null) {
+      throw StateError(
+        'DeepLinking is not configured. Call DeepLinking.configure() first with a valid SDK Key.',
+      );
+    }
+
+    final url = Uri.parse('/api/links/shorten');
+    final Map<String, dynamic> body = {
+      'linkId': linkId,
+      'appId': _appId,
+      if (shareId != null) ...{
+        'shareId': shareId,
+        'share_id': shareId,
+        'shared_id': shareId,
+        's': shareId,
+      },
+      if (customCode != null) 'customCode': customCode,
+      if (customDomain != null) 'customDomain': customDomain,
+    };
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json', 'X-SDK-Key': _sdkKey!},
+      body: json.encode(body),
+    );
+
+    _throwIfAuthOrRateLimited(response);
+
+    final jsonResponse = json.decode(response.body);
+    if (response.statusCode == 200) {
+      return jsonResponse;
+    } else {
+      throw Exception(jsonResponse['error'] ?? 'Failed to shorten link.');
+    }
   }
 
   /// Registers the inviter's referral code and FCM token.
@@ -948,7 +1027,12 @@ class DeepLinking {
       'fcmToken': fcmToken,
       if (referralCode != null) 'referralCode': referralCode,
       if (userId != null) 'userId': userId,
-      if (shareId != null) 'shareId': shareId,
+      if (shareId != null) ...{
+        'shareId': shareId,
+        'share_id': shareId,
+        'shared_id': shareId,
+        's': shareId,
+      },
       if (clickId != null) 'clickId': clickId,
     };
 
@@ -1023,7 +1107,12 @@ class DeepLinking {
         'screenPermissions': screenPermissions,
       'targetId': targetId,
       if (referralCode != null) 'referralCode': referralCode,
-      if (shareId != null) 'shareId': shareId,
+      if (shareId != null) ...{
+        'shareId': shareId,
+        'share_id': shareId,
+        'shared_id': shareId,
+        's': shareId,
+      },
       if (openedByFcmToken != null) 'openedByFcmToken': openedByFcmToken,
       if (openedByUserId != null) 'openedByUserId': openedByUserId,
       if (osVersion != null) 'osVersion': osVersion,
