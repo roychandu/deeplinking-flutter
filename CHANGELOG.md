@@ -1,5 +1,9 @@
 ## 1.0.1
 
+* **Branded URL Shortener**: Added `DeepLinking.shortenLink(...)` to generate clean, branded short URLs (`https://domain/s/:code`) for any tracking link or share with optional custom vanity code and custom domain.
+* **P2P Referral Short Links**: `DeepLinking.registerShare(...)` now returns `shortUrl` (`response['shortUrl']`) directly, allowing clean invite links for WhatsApp/SMS without cumbersome query strings.
+* **Improved Clipboard Short Link Resolution**: Resolved short links (`/s/:code`) in `trackInstall` without overwriting the master `linkId`, ensuring seamless install attribution and deferred deep linking.
+* **Push Notification Sync**: Automatic binding between shortened referral links, sender FCM tokens, and instant referral reward push notifications upon redemption.
 * Added real-time permission update support via FCM push notifications.
 * Introduced `SharePermissionUpdate` model for parsing and handling live permission changes.
 * Added `DeepLinking.onPermissionUpdated` callback and `DeepLinking.permissionUpdates` stream.

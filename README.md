@@ -122,7 +122,54 @@ void generateMultiScreenShare() async {
 }
 ```
 
-### 4. Listening for Direct Deep Links (Native App Links)
+
+### 4. Branded URL Shortener & P2P Sharing
+Generate clean, branded short URLs (`https://yourdomain.com/s/:code`) instead of sharing long URLs with query parameters:
+
+#### Option A: Automatic Short Link with `registerShare` (Recommended for P2P Sharing)
+When registering a share with user referral codes, target screens, or permissions, `registerShare` automatically provisions a branded short link:
+
+```dart
+void shareReferralInvite() async {
+  try {
+    final response = await DeepLinking.registerShare(
+      linkId: 'LINK_ID',
+      senderReferralCode: 'ALICE100',
+      senderUserId: 'user_123',
+      senderFcmToken: 'USER_FCM_TOKEN',
+      screen: 'ProductDetail',
+    );
+
+    // Clean, compact short link ready for WhatsApp / SMS:
+    final shortUrl = response['shortUrl']; // e.g. https://deeplinking.in/s/7vNkoGn
+    print('Share via WhatsApp: $shortUrl');
+  } catch (e) {
+    print('Error registering share: $e');
+  }
+}
+```
+
+#### Option B: Standalone Link Shortening with `shortenLink`
+Generate a branded short URL for any master tracking link, with an optional custom vanity alias or custom domain:
+
+```dart
+void generateShortLink() async {
+  try {
+    final response = await DeepLinking.shortenLink(
+      linkId: 'YOUR_LINK_ID',
+      customCode: 'summer-sale', // Optional vanity slug: /s/summer-sale
+      customDomain: 'links.example.com', // Optional custom domain
+    );
+
+    final shortUrl = response['shortUrl']; // e.g. https://links.example.com/s/summer-sale
+    print('Short URL: $shortUrl');
+  } catch (e) {
+    print('Error shortening link: $e');
+  }
+}
+```
+
+### 5. Listening for Direct Deep Links (Native App Links)
 Listen for deep link open events when the app is already installed:
 
 ```dart
@@ -140,7 +187,7 @@ void initState() {
 }
 ```
 
-### 5. Redeeming Referrals & Granting Rewards
+### 6. Redeeming Referrals & Granting Rewards
 When a referred user completes onboarding or registers, call this method to trigger referral rewards. This fires FCM notifications to the referrer and returns the dynamic reward settings:
 
 ```dart
@@ -164,7 +211,7 @@ void redeemUserReferral(BuildContext context, String referralCode) async {
 }
 ```
 
-### 6. Tracking Shares & CTA Actions
+### 7. Tracking Shares & CTA Actions
 Log sharing activity immediately before opening the OS Share Sheet. This contributes to your analytics for most-shared screens and products:
 
 ```dart
